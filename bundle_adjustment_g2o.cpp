@@ -757,7 +757,6 @@ void my::pcg(MatXX &A, VectorXd &b, VectorXd &x, double tor, int maxiter)
     }
 }
 
-
 void my::pcgReductor(VectorXd AAq[], MatXX A[], VectorXd &q, int min, int max, Vec10 *stat, int tid)
 {
 //    std::cout << "tid: " << tid << std::endl;
@@ -825,7 +824,6 @@ void my::pcgMT(IndexThreadReduce<Vec10> *red, MatXX A[], VectorXd b[], int num_o
         rr_old = rr_new;
     }
 }
-#define CPARS 4
 
 void test_my_solver_pcg_and_sc()
 {
@@ -842,18 +840,12 @@ void test_my_solver_pcg_and_sc()
     VectorXd x;
     VectorXd z;
 
-//    MatXX H = J.transpose() * J;
-//    VectorXd b = J.transpose() * r;
-
-//    return;
     MatXX A[76];
     VectorXd b[76];
     for (int i = 0; i < 76; i++) {
         A[i] = J.block(i * 1000, 0, 1000, 792);
         b[i] = r.segment(i * 1000, 1000);
     }
-
-//    z.setZero();
 
     timer_ACC1.tic();
 //    my1->cg(J, r, x, 1e-6, J.cols());
@@ -884,12 +876,6 @@ void test_my_solver_pcg_and_sc()
     std::cout << "H b  x:\n" << (J.transpose() * J).ldlt().solve(J.transpose() * r).transpose() << std::endl;
     times_ACC4 += timer_ACC4.toc();
 
-//    timer_ACC2.tic();
-//    std::cout << "q r  x:\n" << J.colPivHouseholderQr().solve(r).transpose() << std::endl;
-//    times_ACC2 += timer_ACC2.toc();
-
-//    std::cout <<"J again\n" << J << std::endl;
-//    std::cout <<"r again\n" << r.transpose() << std::endl;
 #if 1
     timer_ACC5.tic();
     Eigen::LeastSquaresConjugateGradient<MatXX > lscg;
@@ -927,7 +913,7 @@ int main(int argc, char **argv)
 //    test_pcg_parallel();
     return 0;
 
-    if (argc != 2) {
+    /*if (argc != 2) {
         cout << "usage: bundle_adjustment_g2o bal_data.txt" << endl;
         return 1;
     }
@@ -937,7 +923,7 @@ int main(int argc, char **argv)
     bal_problem.Perturb(0.1, 0.5, 0.5);
     bal_problem.WriteToPLYFile("initial.ply");
     SolveBA(bal_problem);
-    bal_problem.WriteToPLYFile("final.ply");
+    bal_problem.WriteToPLYFile("final.ply");*/
 
     return 0;
 }
