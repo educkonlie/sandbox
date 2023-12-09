@@ -1,4 +1,8 @@
+#ifndef COMMON_H
+#define COMMON_H
 #pragma once
+
+#define MatXX Matrix<double, Dynamic, Dynamic>
 
 /// 从文件读入BAL dataset
 class BALProblem {
@@ -90,3 +94,4 @@ private:
     double *observations_;
     double *parameters_;
 };
+#endif

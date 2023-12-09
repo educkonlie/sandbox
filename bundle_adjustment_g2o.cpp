@@ -18,6 +18,9 @@
 #include <cstdio>
 //#include <pthread.h>
 
+#include "pcg.h"
+#include "qr.h"
+
 using namespace Eigen;
 using namespace Sophus;
 using namespace std;
@@ -220,96 +223,8 @@ struct Jacobi {
     vector<Matrix<double, 2, 1> > Jrs;
 };
 
-#define MatXX Matrix<double, Dynamic, Dynamic>
-//! 要将三列数据全部QR化，需要第一列，第二列，第三列，依次进行
-//  1 2 3
-//  2 4 6
-//  4 5 6
-//  7 8 9
-// =>
-//  a x x
-//  0 b x
-//  0 0 c
-//  0 0 0
-// Jp 和 Jr合成Jp
 
-void qr(MatXX &Jp, MatXX &Jl)
-{
-    MatXX temp1, temp2;
-    int nres = Jl.rows();
-    int cols = Jl.cols();
-    assert(nres > 3);
-    // i: row
-    // j: col
-    for (int j = 0; j < cols; j++) {
-        double pivot = Jl(j, j);
-//        std::cout << "pivot: " << pivot << std::endl;
-        for (int i = j + 1; i < nres; i++) {
-#if false
-            double a;
-            while ((a = Jl(i, j)) == 0 && i < nres) {
-                i++;
-            }
-#else
-            double a = Jl(i, j);
-#endif
-//            std::cout << "a: " << a << std::endl;
-//            std::cout << "i, j: " << i << " " << j << std::endl;
-            if (i == nres) {
-//                assert(std::abs(pivot) > 0.0000001);
-                if (pivot == 0.0)
-                    pivot = 0.000001;
-                Jl(j, j) = pivot;
-                std::cout << "......pivot...." << pivot << std::endl;
-                break;
-            }
-            double r = sqrt(pivot * pivot + a * a);
-            double c = pivot / r;
-            double s = a / r;
-            pivot = r;
 
-// 变0的，先到temp
-            temp1 = -s * Jl.row(j) + c * Jl.row(i);
-            temp2 = -s * Jp.row(j) + c * Jp.row(i);
-// 变大的.  j是pivot，在上面，i在下面
-            Jl.row(j) = c * Jl.row(j) + s * Jl.row(i);
-            Jp.row(j) = c * Jp.row(j) + s * Jp.row(i);
-// 变0的, temp => i
-            Jl.row(i) = temp1;
-            Jp.row(i) = temp2;
-
-            Jl(j, j) = pivot = r;
-            Jl(i, j) = 0;
-        }
-    }
-}
-void test_qr()
-{
-//    MatXX Jp = MatXX::Random(10, 10);
-    MatXX I = MatXX::Identity(10, 10);
-    MatXX A = MatXX::Random(10, 3);
-
-    MatXX Qt = I;
-    MatXX R = A;
-
-    qr(Qt, R);
-//    std::cout << "I\n" << I << std::endl;
-    std::cout << "A\n" << A << std::endl;
-//    std::cout << "Qt\n" << Qt << std::endl;
-    std::cout << "R\n" << R << std::endl;
-    std::cout << "Q * R\n" << Qt.transpose() * R << std::endl;
-    std::cout << "test 2............" << std::endl;
-    A = MatXX::Random(20, 3 * 3);
-    MatXX Al = A.block(0, 0, 20, 3);
-    MatXX Ap = A.block(0, 3, 20, 3 * 2);
-    qr(Ap, Al);
-
-    std::cout << "A:\n" << A << std::endl;
-    std::cout << "Ap:\n" << Ap << std::endl;
-    std::cout << "Al:\n" << Al << std::endl;
-
-    exit(0);
-}
 
 void my_linearizeOplus(Matrix<double, 2, 9> &pose,
                        Matrix<double, 2, 3> &landmark,
@@ -650,18 +565,7 @@ void my_linearizeOplus(Matrix<double, 2, 9> &pose,
     landmark = E * R.matrix();
 }
 
-class my {
-public:
-    inline my() {}
-    inline ~my() {}
-    void pcgMT(IndexThreadReduce<Vec10> *red, MatXX A[], VectorXd b[], int num_of_A, VectorXd &x, double tor,
-                   int maxiter, bool MT);
-    void pcgReductor(VectorXd AAq[], MatXX A[], VectorXd &q, int min, int max, Vec10 *stat, int tid);
-    void pcg(MatXX &A, VectorXd &b, VectorXd &x, double tor, int maxiter);
-    void cg(MatXX &A, VectorXd &b, VectorXd &x, double tor, int maxiter);
-//    void solver_sparse(size_t &start_row, MatXX &J_total, VectorXd &r_total, MatXX &J, VectorXd &r);
-//    void solver_normal_equation(MatXX &H, VectorXd &b, MatXX &J, VectorXd &r);
-};
+
 
 //void my::my() {;}
 //void my::~my() {;}
@@ -684,146 +588,7 @@ void my_solver_sparse(size_t &start_row, MatXX &J_total, VectorXd &r_total, MatX
     start_row += J.rows();
 }
 
-void my::cg(MatXX &A, VectorXd &b, VectorXd &x, double tor, int maxiter)
-{
-    x = VectorXd::Zero(A.cols());
-//    VectorXd Ax = A * x;
-//    VectorXd r = A.transpose() * b - A.transpose() * Ax;
-    VectorXd r = A.transpose() * b;
-    VectorXd q = r;
-    double rr_old = r.transpose() * r;
-    for (int i = 0; i < maxiter; i++) {
-//        timer_ACC2.tic();
-        VectorXd Aq = A * q;
-        VectorXd AAq = A.transpose() * Aq;
-//        VectorXd AAq = A.transpose() * (A * q);
-//        times_ACC2 += timer_ACC2.toc();
 
-        double alpha = rr_old / (q.transpose() * AAq);
-        x += alpha * q;
-        r -= alpha * AAq;
-        double rr_new = r.transpose() * r;
-
-        if (std::sqrt(rr_new) < tor) {
-            std::cout << "iter: " << i << std::endl;
-            break;
-        }
-
-        q = r + (rr_new / rr_old) * q;
-        rr_old = rr_new;
-    }
-}
-
-void my::pcg(MatXX &A, VectorXd &b, VectorXd &x, double tor, int maxiter)
-{
-    x = VectorXd::Zero(A.cols());
-    VectorXd lambda = VectorXd::Zero(A.cols());
-    for (int i = 0; i < A.cols(); i++)
-        lambda(i) = 1.0 / (A.col(i).transpose() * A.col(i));
-
-//    std::cout << "lambda: " << lambda.transpose() << std::endl;
-//
-//    VectorXd Ax = A * x;
-//    VectorXd r = A.transpose() * b - A.transpose() * Ax;
-    VectorXd r =  (A.transpose() * b);
-//    std::cout << "r1: " << r.transpose() << std::endl;
-
-    r = lambda.asDiagonal() * r;
-//    std::cout << "r2: " << r.transpose() << std::endl;
-
-    VectorXd q = r;
-    double rr_old = r.transpose() * r;
-
-    for (int i = 0; i < maxiter; i++) {
-//        timer_ACC2.tic();
-//        VectorXd Aq = A * q;
-        VectorXd AAq = lambda.asDiagonal() * (A.transpose() * (A * q));
-//        std::cout << "AAq: " << AAq.transpose() << std::endl;
-//        AAq = lambda.asDiagonal() * AAq;
-//        times_ACC2 += timer_ACC2.toc();
-
-        double alpha = rr_old / (q.transpose() * AAq);
-        x += alpha * q;
-        r -= alpha * AAq;
-        double rr_new = r.transpose() * r;
-
-        if (std::sqrt(rr_new) < tor) {
-            std::cout << "iter: " << i << std::endl;
-            break;
-        }
-
-        q = r + (rr_new / rr_old) * q;
-        rr_old = rr_new;
-    }
-}
-
-void my::pcgReductor(VectorXd AAq[], MatXX A[], VectorXd &q, int min, int max, Vec10 *stat, int tid)
-{
-//    std::cout << "tid: " << tid << std::endl;
-//    std::cout << "min-max: " << min << " " << max << std::endl;
-    if (tid == -1)
-        tid = 0;
-    for (int j = min; j < max; j++) {
-        VectorXd Aq = A[j] * q;
-        AAq[tid] += (A[j].transpose() * Aq);
-    }
-//    std::cout << AAq[tid].transpose() << std::endl;
-}
-
-void my::pcgMT(IndexThreadReduce<Vec10> *red, MatXX A[], VectorXd b[], int num_of_A, VectorXd &x,
-               double tor, int maxiter, bool MT)
-{
-    x = VectorXd::Zero(A[0].cols());
-    VectorXd lambda = VectorXd::Zero(A[0].cols());
-    VectorXd r = VectorXd::Zero(A[0].cols());
-
-    for (int j = 0; j < num_of_A; j++) {
-        for (int i = 0; i < A[0].cols(); i++)
-            lambda(i) += (A[j].col(i).transpose() * A[j].col(i));
-        r = r + A[j].transpose() * b[j];
-    }
-    for (int i = 0; i < A[0].cols(); i++)
-        lambda(i) = 1.0 / lambda(i);
-
-    r = lambda.asDiagonal() * r;
-    VectorXd q = r;
-    double rr_old = r.transpose() * r;
-
-    for (int i = 0; i < maxiter; i++) {
-        VectorXd AAq = VectorXd::Zero(A[0].cols());
-        if (!MT) {
-            for (int j = 0; j < num_of_A; j++) {
-                AAq = AAq + (A[j].transpose() * (A[j] * q));
-            }
-//            pcgReductor(&AAq, A, q, 0, num_of_A, NULL, -1);
-        } else {
-            VectorXd AAqs[NUM_THREADS];
-            for (int k = 0; k < NUM_THREADS; k++) {
-                AAqs[k] = VectorXd::Zero(A[0].cols());
-            }
-            red->reduce(boost::bind(&my::pcgReductor,
-                                    this, AAqs, A, q, _1, _2, _3, _4), 0, num_of_A, 0);
-            AAq = AAqs[0];
-            for (int k = 1; k < NUM_THREADS; k++)
-                AAq.noalias() += AAqs[k];
-        }
-
-        AAq = lambda.asDiagonal() * AAq;
-
-        double alpha = rr_old / (q.transpose() * AAq);
-        x += alpha * q;
-        r -= alpha * AAq;
-        double rr_new = r.transpose() * r;
-
-        if (std::sqrt(rr_new) < tor) {
-            std::cout << "iter: " << i << std::endl;
-            break;
-        }
-
-        q = r + (rr_new / rr_old) * q;
-        rr_old = rr_new;
-    }
-}
 
 void test_my_solver_pcg_and_sc()
 {
@@ -896,6 +661,38 @@ void test_my_solver_pcg_and_sc()
     std::cout << times_ACC5 << std::endl;
 
     delete my1;
+}
+
+void test_qr()
+{
+//    MatXX Jp = MatXX::Random(10, 10);
+    MatXX I = MatXX::Identity(10, 10);
+    MatXX A = MatXX::Random(10, 3);
+
+    MatXX Qt = I;
+    MatXX R = A;
+
+    qr(Qt, R);
+//    std::cout << "I\n" << I << std::endl;
+    std::cout << "A\n" << A << std::endl;
+//    std::cout << "Qt\n" << Qt << std::endl;
+    std::cout << "R\n" << R << std::endl;
+    std::cout << "Q * R\n" << Qt.transpose() * R << std::endl;
+    std::cout << "test 2............" << std::endl;
+    A = MatXX::Random(20, 3 * 3);
+    MatXX Al = A.block(0, 0, 20, 3);
+    MatXX Ap = A.block(0, 3, 20, 3 * 2);
+    qr(Ap, Al);
+
+    std::cout << "A:\n" << A << std::endl;
+    std::cout << "Ap:\n" << Ap << std::endl;
+    std::cout << "Al:\n" << Al << std::endl;
+
+    exit(0);
+}
+void compress()
+{
+
 }
 
 //! 并行计算的线程池

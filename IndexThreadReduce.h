@@ -27,7 +27,7 @@
 #include <stdio.h>
 #include <iostream>
 
-#define NUM_THREADS 18
+#define NUM_THREADS 6
 typedef Eigen::Matrix<double,10,1> Vec10;
 
 template<typename Running>
