@@ -663,38 +663,6 @@ void test_my_solver_pcg_and_sc()
     delete my1;
 }
 
-void test_qr()
-{
-//    MatXX Jp = MatXX::Random(10, 10);
-    MatXX I = MatXX::Identity(10, 10);
-    MatXX A = MatXX::Random(10, 3);
-
-    MatXX Qt = I;
-    MatXX R = A;
-
-    qr(Qt, R);
-//    std::cout << "I\n" << I << std::endl;
-    std::cout << "A\n" << A << std::endl;
-//    std::cout << "Qt\n" << Qt << std::endl;
-    std::cout << "R\n" << R << std::endl;
-    std::cout << "Q * R\n" << Qt.transpose() * R << std::endl;
-    std::cout << "test 2............" << std::endl;
-    A = MatXX::Random(20, 3 * 3);
-    MatXX Al = A.block(0, 0, 20, 3);
-    MatXX Ap = A.block(0, 3, 20, 3 * 2);
-    qr(Ap, Al);
-
-    std::cout << "A:\n" << A << std::endl;
-    std::cout << "Ap:\n" << Ap << std::endl;
-    std::cout << "Al:\n" << Al << std::endl;
-
-    exit(0);
-}
-void compress()
-{
-
-}
-
 //! 并行计算的线程池
 //! 并行计算的线程池是将比如1000条数据用10个线程处理，每个线程处理100条，然后写到10个缓冲区里，等10个线程join了后，
 //! 再用一个串行操作(for循环)把缓冲区数据累加输出。
@@ -705,9 +673,11 @@ int main(int argc, char **argv)
 {
 //    test_my_thread_pool();
 //    test_qr();
-    test_my_solver_pcg_and_sc();
+//    test_my_solver_pcg_and_sc();
 //    test_householderQr();
 //    test_pcg_parallel();
+
+    marg_frame();
     return 0;
 
     /*if (argc != 2) {
