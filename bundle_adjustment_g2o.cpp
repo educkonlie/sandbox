@@ -677,7 +677,8 @@ int main(int argc, char **argv)
 //    test_householderQr();
 //    test_pcg_parallel();
 
-    marg_frame();
+//    marg_frame();
+    test_marg_frame();
     return 0;
 
     /*if (argc != 2) {

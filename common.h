@@ -3,6 +3,7 @@
 #pragma once
 
 #define MatXX Matrix<double, Dynamic, Dynamic>
+#define VecX VectorXd
 
 /// 从文件读入BAL dataset
 class BALProblem {
