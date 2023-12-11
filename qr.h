@@ -152,6 +152,7 @@ void marg_frame(MatXX &J, VecX &r, MatXX &J_new, VecX &r_new, int nframes, int i
     J_new.leftCols(CPARS) = J.middleCols(nframes * 8 - 8, CPARS);
     J_new.middleCols(CPARS, nframes * 8 - 8) = J.leftCols(nframes * 8 - 8);
 }
+//!
 void no_marg_frame(MatXX &J, VecX &r, MatXX &J_new, VecX &r_new, int nframes)
 {
     MatXX Jr = MatXX::Zero(J.rows(), J.cols() + 1);
@@ -162,8 +163,9 @@ void no_marg_frame(MatXX &J, VecX &r, MatXX &J_new, VecX &r_new, int nframes)
 
     //! qr分解，以及化简，即删除多余的零行
     qr2(Jr);
-    MatXX temp = Jr.topRows(Jr.cols());
-    Jr = temp;
+    Jr.conservativeResize(Jr.cols(), Jr.cols());
+//    MatXX temp = Jr.topRows(Jr.cols());
+//    Jr = temp;
 
     //! 将化简后的Jr分为J, r
     J = Jr.leftCols(CPARS + nframes * 8);
@@ -176,18 +178,37 @@ void no_marg_frame(MatXX &J, VecX &r, MatXX &J_new, VecX &r_new, int nframes)
     J_new.leftCols(CPARS) = J.middleCols(nframes * 8, CPARS);
     J_new.middleCols(CPARS, nframes * 8) = J.leftCols(nframes * 8);
 }
+void add_lambda_frame(MatXX &J, VecX &r, int idx, Vec8 Lambda, Vec8 alpha)
+{
+    int old_rows = J.rows();
+    //! 扩展底下8行
+    J.conservativeResize(J.rows() + 8, J.cols());
+    r.conservativeResize(r.rows() + 8);
+//    J.bottomRows(8) = MatXX::Zero(8, J.cols());
+    J.bottomRows(8).setZero();
+    r.bottomRows(8).setZero();
+    //! 底下idx对应的8行8列设置为Lambda，r底下设置为 Lambda * alpha
+    J.block(old_rows, CPARS + idx * 8, 8, 8) = Lambda.asDiagonal();
+    r.bottomRows(8) = Lambda.asDiagonal() * alpha;
+}
 void test_marg_frame() {
     int num_of_frames = 25;
     int idx = 2;
     MatXX J = MatXX::Random(2000, CPARS + num_of_frames * 8);
     VecX r = VecX::Random(2000);
+    Vec8 Lambda = Vec8::Random(8);
+    Vec8 alpha  = Vec8::Random(8);
+    add_lambda_frame(J, r, 2, Lambda, alpha);
+    std::cout << "J\n" << J << std::endl;
+    std::cout << "r\n" << r.transpose() << std::endl;
+
     MatXX J_new;
     VecX r_new;
     std::cout << "x    : "
             << (J.transpose() * J).ldlt().solve(J.transpose() * r).transpose()
             << std::endl;
-    marg_frame(J, r, J_new, r_new, num_of_frames, 2);
-//    no_marg_frame(J, r, J_new, r_new, num_of_frames);
+//    marg_frame(J, r, J_new, r_new, num_of_frames, 2);
+    no_marg_frame(J, r, J_new, r_new, num_of_frames);
 
     std::cout << "new x: "
             << (J_new.transpose() * J_new).ldlt().solve(J_new.transpose() * r_new).transpose()
@@ -222,3 +243,4 @@ void test_qr()
     std::cout << "Ap:\n" << Ap << std::endl;
     std::cout << "Al:\n" << Al << std::endl;
 }
+

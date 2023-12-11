@@ -264,6 +264,7 @@ double times_ACC4 = 0.0;
 TicToc timer_ACC5;
 double times_ACC5 = 0.0;
 
+#if 0
 void my_solver_normal_equation(MatXX &, VectorXd &, MatXX &, VectorXd &);
 void my_solver_sparse(size_t &st, MatXX &J_total, VectorXd &r_total, MatXX &J, VectorXd &r);
 void SolveBA(BALProblem &bal_problem)
@@ -564,18 +565,18 @@ void my_linearizeOplus(Matrix<double, 2, 9> &pose,
 //        cout << "Xj " << _jacobianOplusXj << endl;
     landmark = E * R.matrix();
 }
-
+#endif
 
 
 //void my::my() {;}
 //void my::~my() {;}
 
-void my_solver_normal_equation(MatXX &H, VectorXd &b, MatXX &J, VectorXd &r)
+void my_solver_normal_equation(MatXX &H, VecX &b, MatXX &J, VecX &r)
 {
     H += J.transpose() * J;
     b += J.transpose() * r;
 }
-void my_solver_sparse(size_t &start_row, MatXX &J_total, VectorXd &r_total, MatXX &J, VectorXd &r)
+void my_solver_sparse(size_t &start_row, MatXX &J_total, VecX &r_total, MatXX &J, VecX &r)
 {
 //    static size_t start_row = 0;
 //    static size_t start_col = 0;
@@ -588,12 +589,28 @@ void my_solver_sparse(size_t &start_row, MatXX &J_total, VectorXd &r_total, MatX
     start_row += J.rows();
 }
 
+void test_conservertiveResize()
+{
+    MatXX A = MatXX::Random(10, 100);
+    timer_ACC1.tic();
+    for (int i = 0; i < 500; i++) {
+        A.conservativeResize(A.rows() + 9, A.cols());
+    }
+    times_ACC1 += timer_ACC1.toc();
+    timer_ACC2.tic();
+    for (int i = 0; i < 500; i++) {
+        A.setZero();
+    }
+    times_ACC2 += timer_ACC2.toc();
+    std::cout << times_ACC1 << std::endl;
+    std::cout << times_ACC2 << std::endl;
+}
 
 
 void test_my_solver_pcg_and_sc()
 {
     MatXX J = MatXX::Random(76000, 792);
-    VectorXd r = VectorXd::Random(76000);
+    VecX r = VecX::Random(76000);
 
     IndexThreadReduce<Vec10> *thread_pool = new IndexThreadReduce<Vec10>();
 
@@ -602,11 +619,11 @@ void test_my_solver_pcg_and_sc()
     std::cout << "x size\n" << J.cols() << std::endl;
     std::cout << "residual size\n" << r.rows() << std::endl;
 
-    VectorXd x;
-    VectorXd z;
+    VecX x;
+    VecX z;
 
     MatXX A[76];
-    VectorXd b[76];
+    VecX b[76];
     for (int i = 0; i < 76; i++) {
         A[i] = J.block(i * 1000, 0, 1000, 792);
         b[i] = r.segment(i * 1000, 1000);
@@ -641,13 +658,13 @@ void test_my_solver_pcg_and_sc()
     std::cout << "H b  x:\n" << (J.transpose() * J).ldlt().solve(J.transpose() * r).transpose() << std::endl;
     times_ACC4 += timer_ACC4.toc();
 
-#if 1
+#if 0
     timer_ACC5.tic();
     Eigen::LeastSquaresConjugateGradient<MatXX > lscg;
 //    lscg.setMaxIterations(100);
     lscg.setTolerance(1e-8);
     lscg.compute(J);
-    VectorXd y = lscg.solve(r);
+    VecX y = lscg.solve(r);
 
     std::cout << "lscg  x:\n" << y.transpose() << std::endl;
     times_ACC5 += timer_ACC5.toc();
@@ -671,14 +688,13 @@ void test_my_solver_pcg_and_sc()
 
 int main(int argc, char **argv)
 {
+//    test_conservertiveResize();
+
 //    test_my_thread_pool();
 //    test_qr();
-//    test_my_solver_pcg_and_sc();
-//    test_householderQr();
-//    test_pcg_parallel();
+    test_my_solver_pcg_and_sc();
 
-//    marg_frame();
-    test_marg_frame();
+//    test_marg_frame();
     return 0;
 
     /*if (argc != 2) {
