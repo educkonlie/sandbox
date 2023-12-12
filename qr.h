@@ -24,7 +24,7 @@ void qr(MatXX &Jp, MatXX &Jl)
     for (int j = 0; j < cols; j++) {
         rkf_scalar pivot = Jl(j, j);
         for (int i = j + 1; i < nres; i++) {
-            if (Jl(i, j) < 1e-10)
+            if (std::abs(Jl(i, j)) < 1e-10)
                 continue;
             rkf_scalar a = Jl(i, j);
             rkf_scalar r = sqrt(pivot * pivot + a * a);
@@ -58,7 +58,7 @@ void qr2(MatXX &Jl)
     for (int j = 0; j < cols; j++) {
         rkf_scalar pivot = Jl(j, j);
         for (int i = j + 1; i < nres; i++) {
-            if (Jl(i, j) < 1e-10)
+            if (std::abs(Jl(i, j)) < 1e-10)
                 continue;
             rkf_scalar a = Jl(i, j);
             rkf_scalar r = sqrt(pivot * pivot + a * a);
@@ -243,6 +243,7 @@ void test_qr()
 //    std::cout << "Qt\n" << Qt << std::endl;
     std::cout << "R\n" << R << std::endl;
     std::cout << "Q * R\n" << Qt.transpose() * R << std::endl;
+    std::cout << "Qt * A\n" << Qt * A << std::endl;
     std::cout << "test 2............" << std::endl;
     A = MatXX::Random(20, 3 * 3);
     MatXX Al = A.block(0, 0, 20, 3);
