@@ -23,27 +23,10 @@ void qr(MatXX &Jp, MatXX &Jl)
     // j: col
     for (int j = 0; j < cols; j++) {
         rkf_scalar pivot = Jl(j, j);
-//        std::cout << "pivot: " << pivot << std::endl;
         for (int i = j + 1; i < nres; i++) {
-#if false
-            rkf_scalar a;
-            while ((a = Jl(i, j)) == 0 && i < nres) {
-                i++;
-            }
-#else
+            if (Jl(i, j) < 1e-10)
+                continue;
             rkf_scalar a = Jl(i, j);
-#endif
-//            std::cout << "a: " << a << std::endl;
-//            std::cout << "i, j: " << i << " " << j << std::endl;
-            if (i == nres) {
-//                assert(std::abs(pivot) > 0.0000001);
-                if (pivot == 0.0)
-                    pivot = 0.000001;
-                Jl(j, j) = pivot;
-                std::cout << "......pivot...." << pivot << std::endl;
-                assert(false);
-                break;
-            }
             rkf_scalar r = sqrt(pivot * pivot + a * a);
             rkf_scalar c = pivot / r;
             rkf_scalar s = a / r;
@@ -74,29 +57,10 @@ void qr2(MatXX &Jl)
     // j: col
     for (int j = 0; j < cols; j++) {
         rkf_scalar pivot = Jl(j, j);
-//        std::cout << "pivot: " << pivot << std::endl;
         for (int i = j + 1; i < nres; i++) {
-#if false
-            rkf_scalar a;
-            while ((a = Jl(i, j)) == 0 && i < nres) {
-                i++;
-            }
-#else
+            if (Jl(i, j) < 1e-10)
+                continue;
             rkf_scalar a = Jl(i, j);
-#endif
-//            std::cout << "a: " << a << std::endl;
-//            std::cout << "i, j: " << i << " " << j << std::endl;
-            if (i == nres) {
-//                assert(std::abs(pivot) > 0.0000001);
-                if (pivot == 0.0) {
-                    pivot = 0.00000001;
-                    assert(false);
-                }
-                Jl(j, j) = pivot;
-                std::cout << "......pivot...." << pivot << std::endl;
-                assert(false);
-                break;
-            }
             rkf_scalar r = sqrt(pivot * pivot + a * a);
             rkf_scalar c = pivot / r;
             rkf_scalar s = a / r;
