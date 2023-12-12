@@ -606,7 +606,6 @@ void test_conservertiveResize()
     std::cout << times_ACC2 << std::endl;
 }
 
-
 void test_my_solver_pcg_and_sc()
 {
     MatXX J = MatXX::Random(76000, 792);
@@ -680,6 +679,8 @@ void test_my_solver_pcg_and_sc()
     delete my1;
 }
 
+
+
 //! 并行计算的线程池
 //! 并行计算的线程池是将比如1000条数据用10个线程处理，每个线程处理100条，然后写到10个缓冲区里，等10个线程join了后，
 //! 再用一个串行操作(for循环)把缓冲区数据累加输出。
@@ -692,9 +693,9 @@ int main(int argc, char **argv)
 
 //    test_my_thread_pool();
 //    test_qr();
-    test_my_solver_pcg_and_sc();
+//    test_my_solver_pcg_and_sc();
 
-//    test_marg_frame();
+    test_marg_frame();
     return 0;
 
     /*if (argc != 2) {

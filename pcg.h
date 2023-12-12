@@ -1,3 +1,4 @@
+#pragma once
 #include <iostream>
 #include "common.h"
 #include "sophus/se3.hpp"
@@ -18,11 +19,6 @@ class my {
 public:
     inline my() {}
     inline ~my() {}
-//    void pcgMT(IndexThreadReduce<Vec10> *red, MatXX A[], VectorXd b[], int num_of_A, VectorXd &x, double tor,
-//               int maxiter, bool MT);
-//    void pcgReductor(VectorXd AAq[], MatXX A[], VectorXd &q, int min, int max, Vec10 *stat, int tid);
-//    void pcg(MatXX &A, VectorXd &b, VectorXd &x, double tor, int maxiter);
-//    void cg(MatXX &A, VectorXd &b, VectorXd &x, double tor, int maxiter);
 
     void cg(MatXX &A, VecX &b, VecX &x, rkf_scalar tor, int maxiter)
     {

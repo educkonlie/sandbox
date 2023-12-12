@@ -1,4 +1,6 @@
+#pragma once
 #include "common.h"
+#include "pcg.h"
 //! 要将三列数据全部QR化，需要第一列，第二列，第三列，依次进行
 //  1 2 3
 //  2 4 6
@@ -20,16 +22,16 @@ void qr(MatXX &Jp, MatXX &Jl)
     // i: row
     // j: col
     for (int j = 0; j < cols; j++) {
-        double pivot = Jl(j, j);
+        rkf_scalar pivot = Jl(j, j);
 //        std::cout << "pivot: " << pivot << std::endl;
         for (int i = j + 1; i < nres; i++) {
 #if false
-            double a;
+            rkf_scalar a;
             while ((a = Jl(i, j)) == 0 && i < nres) {
                 i++;
             }
 #else
-            double a = Jl(i, j);
+            rkf_scalar a = Jl(i, j);
 #endif
 //            std::cout << "a: " << a << std::endl;
 //            std::cout << "i, j: " << i << " " << j << std::endl;
@@ -42,9 +44,9 @@ void qr(MatXX &Jp, MatXX &Jl)
                 assert(false);
                 break;
             }
-            double r = sqrt(pivot * pivot + a * a);
-            double c = pivot / r;
-            double s = a / r;
+            rkf_scalar r = sqrt(pivot * pivot + a * a);
+            rkf_scalar c = pivot / r;
+            rkf_scalar s = a / r;
             pivot = r;
 
 // 变0的，先到temp
@@ -71,31 +73,33 @@ void qr2(MatXX &Jl)
     // i: row
     // j: col
     for (int j = 0; j < cols; j++) {
-        double pivot = Jl(j, j);
+        rkf_scalar pivot = Jl(j, j);
 //        std::cout << "pivot: " << pivot << std::endl;
         for (int i = j + 1; i < nres; i++) {
 #if false
-            double a;
+            rkf_scalar a;
             while ((a = Jl(i, j)) == 0 && i < nres) {
                 i++;
             }
 #else
-            double a = Jl(i, j);
+            rkf_scalar a = Jl(i, j);
 #endif
 //            std::cout << "a: " << a << std::endl;
 //            std::cout << "i, j: " << i << " " << j << std::endl;
             if (i == nres) {
 //                assert(std::abs(pivot) > 0.0000001);
-                if (pivot == 0.0)
-                    pivot = 0.000001;
+                if (pivot == 0.0) {
+                    pivot = 0.00000001;
+                    assert(false);
+                }
                 Jl(j, j) = pivot;
                 std::cout << "......pivot...." << pivot << std::endl;
                 assert(false);
                 break;
             }
-            double r = sqrt(pivot * pivot + a * a);
-            double c = pivot / r;
-            double s = a / r;
+            rkf_scalar r = sqrt(pivot * pivot + a * a);
+            rkf_scalar c = pivot / r;
+            rkf_scalar s = a / r;
             pivot = r;
 
 // 变0的，先到temp
@@ -152,13 +156,32 @@ void marg_frame(MatXX &J, VecX &r, MatXX &J_new, VecX &r_new, int nframes, int i
     J_new.leftCols(CPARS) = J.middleCols(nframes * 8 - 8, CPARS);
     J_new.middleCols(CPARS, nframes * 8 - 8) = J.leftCols(nframes * 8 - 8);
 }
+void compress_Jr(MatXX &J, VecX &r, int nframes)
+{
+    MatXX Jr = MatXX::Zero(J.rows(), J.cols() + 1);
+    //! 组Jr
+    Jr.leftCols(CPARS + nframes * 8) = J;
+    Jr.rightCols(1) = r;
+
+    //! qr分解，以及化简，即删除多余的零行
+    qr2(Jr);
+    Jr.conservativeResize(Jr.cols(), Jr.cols());
+//    MatXX temp = Jr.topRows(Jr.cols());
+//    Jr = temp;
+
+    //! 将化简后的Jr分为J, r
+    J = Jr.leftCols(CPARS + nframes * 8);
+    r = Jr.rightCols(1);
+}
 //!
 void no_marg_frame(MatXX &J, VecX &r, MatXX &J_new, VecX &r_new, int nframes)
 {
     MatXX Jr = MatXX::Zero(J.rows(), J.cols() + 1);
     //! 组Jr，把CPARS放到后面
-    Jr.leftCols(nframes * 8) = J.middleCols(CPARS, J.cols() - CPARS);
-    Jr.middleCols(nframes * 8, CPARS) = J.leftCols(CPARS);
+//    Jr.leftCols(nframes * 8) = J.middleCols(CPARS, J.cols() - CPARS);
+//    Jr.middleCols(nframes * 8, CPARS) = J.leftCols(CPARS);
+//    Jr.rightCols(1) = r;
+    Jr.leftCols(CPARS + nframes * 8) = J;
     Jr.rightCols(1) = r;
 
     //! qr分解，以及化简，即删除多余的零行
@@ -172,11 +195,13 @@ void no_marg_frame(MatXX &J, VecX &r, MatXX &J_new, VecX &r_new, int nframes)
     r = Jr.rightCols(1);
 
     //! 输出为J_new, r_new
-    J_new = MatXX::Zero(J.rows(), J.cols());
-    r_new = r;
+//    J_new = MatXX::Zero(J.rows(), J.cols());
+//    r_new = r;
+//    J_new = J;
+//    r_new = r;
     //! 把CPARS换回头部
-    J_new.leftCols(CPARS) = J.middleCols(nframes * 8, CPARS);
-    J_new.middleCols(CPARS, nframes * 8) = J.leftCols(nframes * 8);
+//    J_new.leftCols(CPARS) = J.middleCols(nframes * 8, CPARS);
+//    J_new.middleCols(CPARS, nframes * 8) = J.leftCols(nframes * 8);
 }
 void add_lambda_frame(MatXX &J, VecX &r, int idx, Vec8 Lambda, Vec8 alpha)
 {
@@ -198,25 +223,33 @@ void test_marg_frame() {
     VecX r = VecX::Random(2000);
     Vec8 Lambda = Vec8::Random(8);
     Vec8 alpha  = Vec8::Random(8);
-    add_lambda_frame(J, r, 2, Lambda, alpha);
-    std::cout << "J\n" << J << std::endl;
-    std::cout << "r\n" << r.transpose() << std::endl;
+//    add_lambda_frame(J, r, 2, Lambda, alpha);
 
-    MatXX J_new;
-    VecX r_new;
-    std::cout << "x    : "
-            << (J.transpose() * J).ldlt().solve(J.transpose() * r).transpose()
-            << std::endl;
+    my *my1 = new my();
+
+//    MatXX J_new;
+//    VecX r_new;
+    VecX x;
+    my1->pcg(J, r, x, 1e-8, 10);
+//    std::cout << "x    : "
+//            << (J.transpose() * J).ldlt().solve(J.transpose() * r).transpose()
+//            << std::endl;
+    std::cout << "x    : " << x.transpose() << std::endl;
 //    marg_frame(J, r, J_new, r_new, num_of_frames, 2);
-    no_marg_frame(J, r, J_new, r_new, num_of_frames);
+//    no_marg_frame(J, r, J_new, r_new, num_of_frames);
+    compress_Jr(J, r, num_of_frames);
 
-    std::cout << "new x: "
-            << (J_new.transpose() * J_new).ldlt().solve(J_new.transpose() * r_new).transpose()
-            << std::endl;
-
-    std::cout << "J.rows(): " << J_new.rows() << std::endl;
-    std::cout << "J.cols(): " << J_new.cols() << std::endl;
-    std::cout << "r.rows(): " << r_new.rows() << std::endl;
+//    std::cout << "new x: "
+//            << (J_new.transpose() * J_new).ldlt().solve(J_new.transpose() * r_new).transpose()
+//            << std::endl;
+    my1->pcg(J, r, x, 1e-8, 10);
+//    std::cout << "new x: "
+//              << (J.transpose() * J).ldlt().solve(J.transpose() * r).transpose()
+//              << std::endl;
+    std::cout << "new x: " << x.transpose() << std::endl;
+    std::cout << "J.rows(): " << J.rows() << std::endl;
+    std::cout << "J.cols(): " << J.cols() << std::endl;
+    std::cout << "r.rows(): " << r.rows() << std::endl;
 }
 void test_qr()
 {
