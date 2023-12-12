@@ -156,11 +156,11 @@ void marg_frame(MatXX &J, VecX &r, MatXX &J_new, VecX &r_new, int nframes, int i
     J_new.leftCols(CPARS) = J.middleCols(nframes * 8 - 8, CPARS);
     J_new.middleCols(CPARS, nframes * 8 - 8) = J.leftCols(nframes * 8 - 8);
 }
-void compress_Jr(MatXX &J, VecX &r, int nframes)
+void compress_Jr(MatXX &J, VecX &r)
 {
     MatXX Jr = MatXX::Zero(J.rows(), J.cols() + 1);
     //! 组Jr
-    Jr.leftCols(CPARS + nframes * 8) = J;
+    Jr.leftCols(J.cols()) = J;
     Jr.rightCols(1) = r;
 
     //! qr分解，以及化简，即删除多余的零行
@@ -170,7 +170,7 @@ void compress_Jr(MatXX &J, VecX &r, int nframes)
 //    Jr = temp;
 
     //! 将化简后的Jr分为J, r
-    J = Jr.leftCols(CPARS + nframes * 8);
+    J = Jr.leftCols(Jr.cols() - 1);
     r = Jr.rightCols(1);
 }
 //!
@@ -227,26 +227,39 @@ void test_marg_frame() {
 
     my *my1 = new my();
 
-//    MatXX J_new;
-//    VecX r_new;
-    VecX x;
-    my1->pcg(J, r, x, 1e-8, 10);
-//    std::cout << "x    : "
-//            << (J.transpose() * J).ldlt().solve(J.transpose() * r).transpose()
-//            << std::endl;
-    std::cout << "x    : " << x.transpose() << std::endl;
+    Matrix<double, Dynamic, Dynamic> J_new;
+    VectorXd r_new;
+    J_new = J.cast<double>();
+    r_new = r.cast<double>();
+//    VecX x;
+//    my1->pcg(J, r, x, 1e-8, 10);
+    std::cout << "x double    : "
+            << (J_new.transpose() * J_new).ldlt().solve(J_new.transpose() * r_new).transpose()
+            << std::endl;
+//    std::cout << "x scalar    : "
+//              << (J.transpose() * J).ldlt().solve(J.transpose() * r).transpose()
+//              << std::endl;
+
+//    std::cout << "x    : " << x.transpose() << std::endl;
 //    marg_frame(J, r, J_new, r_new, num_of_frames, 2);
 //    no_marg_frame(J, r, J_new, r_new, num_of_frames);
-    compress_Jr(J, r, num_of_frames);
+    compress_Jr(J, r);
+
+    J_new = J.cast<double>();
+    r_new = r.cast<double>();
 
 //    std::cout << "new x: "
 //            << (J_new.transpose() * J_new).ldlt().solve(J_new.transpose() * r_new).transpose()
 //            << std::endl;
-    my1->pcg(J, r, x, 1e-8, 10);
-//    std::cout << "new x: "
-//              << (J.transpose() * J).ldlt().solve(J.transpose() * r).transpose()
-//              << std::endl;
-    std::cout << "new x: " << x.transpose() << std::endl;
+//    my1->pcg(J, r, x, 1e-8, 10);
+    std::cout << "new x scalar: "
+              << (J.transpose() * J).ldlt().solve(J.transpose() * r).transpose()
+              << std::endl;
+    std::cout << "new x double: "
+              << (J_new.transpose() * J_new).ldlt().solve(J_new.transpose() * r_new).transpose()
+              << std::endl;
+
+//    std::cout << "new x: " << x.transpose() << std::endl;
     std::cout << "J.rows(): " << J.rows() << std::endl;
     std::cout << "J.cols(): " << J.cols() << std::endl;
     std::cout << "r.rows(): " << r.rows() << std::endl;

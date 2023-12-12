@@ -2,7 +2,7 @@
 #define COMMON_H
 #pragma once
 
-#define rkf_scalar double
+#define rkf_scalar float
 
 #define MatXX Matrix<rkf_scalar, Dynamic, Dynamic>
 #define VecX Matrix<rkf_scalar, Dynamic, 1>
