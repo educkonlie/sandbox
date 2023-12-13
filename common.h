@@ -2,8 +2,9 @@
 #define COMMON_H
 #pragma once
 
-#define rkf_scalar float
+#define rkf_scalar double
 
+#define CPARS 4
 #define MatXX Matrix<rkf_scalar, Dynamic, Dynamic>
 #define VecX Matrix<rkf_scalar, Dynamic, 1>
 #define Vec8 Matrix<rkf_scalar, 8, 1>

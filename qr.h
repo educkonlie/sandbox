@@ -78,7 +78,45 @@ void qr2(MatXX &Jl)
         }
     }
 }
-#define CPARS 4
+void qr3(MatXX &Jp, MatXX &Jl, VecX &Jr) {
+    MatXX temp1, temp2;
+    VecX temp3;
+    int nres = Jl.rows();
+    int cols = Jl.cols();
+    assert(nres > 3);
+    // i: row
+    // j: col
+    for (int j = 0; j < cols; j++) {
+        rkf_scalar pivot = Jl(j, j);
+        for (int i = j + 1; i < nres; i++) {
+            if (std::abs(Jl(i, j)) < 1e-10)
+                continue;
+            rkf_scalar a = Jl(i, j);
+            rkf_scalar r = sqrt(pivot * pivot + a * a);
+            rkf_scalar c = pivot / r;
+            rkf_scalar s = a / r;
+            pivot = r;
+            assert(std::isfinite(r));
+            assert(std::abs(r) > 1e-10);
+// 变0的，先到temp
+            temp1 = -s * Jp.row(j) + c * Jp.row(i);
+            temp2 = -s * Jl.row(j) + c * Jl.row(i);
+            temp3 = -s * Jr.row(j) + c * Jr.row(i);
+// 变大的.  j是pivot，在上面，i在下面
+            Jp.row(j) = c * Jp.row(j) + s * Jp.row(i);
+            Jl.row(j) = c * Jl.row(j) + s * Jl.row(i);
+            Jr.row(j) = c * Jr.row(j) + s * Jr.row(i);
+// 变0的, temp => i
+            Jp.row(i) = temp1;
+            Jl.row(i) = temp2;
+            Jr.row(i) = temp3;
+
+            Jl(j, j) = pivot = r;
+            Jl(i, j) = 0;
+        }
+    }
+}
+
 #define XI 8
 // struct of JM rM
 //  JM_marg   JM_remained   JM_CPARS  rM
@@ -119,6 +157,28 @@ void marg_frame(MatXX &J, VecX &r, MatXX &J_new, VecX &r_new, int nframes, int i
     //! 再把CPARS换回头部
     J_new.leftCols(CPARS) = J.middleCols(nframes * 8 - 8, CPARS);
     J_new.middleCols(CPARS, nframes * 8 - 8) = J.leftCols(nframes * 8 - 8);
+}
+void marg_frame2(MatXX &J, VecX &r, int idx)
+{
+    MatXX J_new = MatXX::Zero(J.rows(), J.cols() - 8);
+    MatXX Jl = MatXX::Zero(J.rows(), 8);
+
+//! 将需要marg的帧移到Jl
+//    if (idx != 0) {
+        J_new.leftCols(CPARS + idx * 8) = J.leftCols(CPARS + idx * 8);
+        Jl = J.middleCols(CPARS + idx * 8, 8);
+        J_new.rightCols(J_new.cols() - CPARS - idx * 8)
+                = J.rightCols(J.cols() - CPARS - idx * 8 - 8);
+//    }
+
+    //! qr分解
+//    qr3(J_new, Jl, r);
+    qr3(J_new, Jl, r);
+
+    //! 去掉上8行 (marg)
+    J = J_new.bottomRows(J_new.rows() - 8);
+    VecX r_new = r;
+    r = r_new.bottomRows(r_new.rows() - 8);
 }
 void compress_Jr(MatXX &J, VecX &r)
 {
@@ -189,7 +249,7 @@ void test_marg_frame() {
     Vec8 alpha  = Vec8::Random(8);
 //    add_lambda_frame(J, r, 2, Lambda, alpha);
 
-    my *my1 = new my();
+//    my *my1 = new my();
 
     Matrix<double, Dynamic, Dynamic> J_new;
     VectorXd r_new;
@@ -207,7 +267,9 @@ void test_marg_frame() {
 //    std::cout << "x    : " << x.transpose() << std::endl;
 //    marg_frame(J, r, J_new, r_new, num_of_frames, 2);
 //    no_marg_frame(J, r, J_new, r_new, num_of_frames);
-    compress_Jr(J, r);
+
+//    compress_Jr(J, r);
+    marg_frame2(J, r, 2);
 
     J_new = J.cast<double>();
     r_new = r.cast<double>();

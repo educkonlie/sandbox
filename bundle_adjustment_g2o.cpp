@@ -692,10 +692,10 @@ int main(int argc, char **argv)
 //    test_conservertiveResize();
 
 //    test_my_thread_pool();
-    test_qr();
+//    test_qr();
 //    test_my_solver_pcg_and_sc();
 
-//    test_marg_frame();
+    test_marg_frame();
     return 0;
 
     /*if (argc != 2) {
