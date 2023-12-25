@@ -686,7 +686,7 @@ void test_my_solver_pcg_and_sc()
 //! 再用一个串行操作(for循环)把缓冲区数据累加输出。
 //! 在这里面没有锁，也没有线程切换（之前一直没有搞清楚，没有跟并发区分清楚）
 
-
+#if 0
 int main(int argc, char **argv)
 {
 //    test_conservertiveResize();
@@ -712,3 +712,140 @@ int main(int argc, char **argv)
 
     return 0;
 }
+#endif
+/*
+ * In this code:
+
+The matrix_multiply_avx function performs matrix multiplication using AVX intrinsics.
+ It uses nested loops to iterate through the matrices A, B, and C.
+
+Within the innermost loop, AVX intrinsics are used to load rows of matrix A,
+ broadcast values from matrix B, and perform the multiply-and-accumulate operation.
+
+The result is stored back in matrix C using _mm256_storeu_ps.
+
+In the main function, matrices A and B are initialized with appropriate values,
+ and the matrix_multiply_avx function is called to compute the result in matrix C.
+ Make sure to adjust the matrix size (N) and populate matrices A and B
+ with the desired data before running the code.
+ Additionally, consider aligning your data properly for better performance.
+ */
+
+#include <immintrin.h>
+#include <stdio.h>
+
+#define N 8  // Matrix size (N x N)
+
+//! 一个数乘一个向量
+void scalar_mul_vector_avx(float *s, float *B, float *C)
+{
+    __m256 sum = _mm256_setzero_ps();  // Initialize a 256-bit vector to zero
+
+    __m256 a = _mm256_loadu_ps(B);  // Load a row of matrix A
+    __m256 b = _mm256_broadcast_ss(s);  // Broadcast a value from matrix B
+    sum = _mm256_add_ps(sum, _mm256_mul_ps(a, b));  // Multiply and accumulate
+
+    _mm256_storeu_ps(C, sum);  // Store the result in matrix C
+}
+void matrix_mul_vector_avx(float *A, float *b, float *C)
+{
+    __m256 sum = _mm256_setzero_ps();  // Initialize a 256-bit vector to zero
+    for (int i = 0; i < 8; i++) {
+        __m256 x = _mm256_loadu_ps(A + i * 8);  //! 它是按照A的类型来计算i的步长的
+        __m256 y = _mm256_broadcast_ss(b + i);  // Broadcast a value from matrix B
+        sum = _mm256_add_ps(sum, _mm256_mul_ps(x, y));  // Multiply and accumulate
+    }
+    _mm256_storeu_ps(C, sum);
+}
+
+int main()
+{
+    MatXX A = MatXX::Identity(N, N);
+    VecX B = VecX::Ones(N);
+    VecX C = VecX::Zero(N);
+
+    for (int i = 0; i < N; i++)
+        B(i) = i + 1;
+
+//    float A[N][N];  // Matrix A
+//    float B[N][N];  // Matrix B
+//    float C[N][N];  // Result Matrix C
+
+    // Initialize matrices A and B (you should fill these with appropriate values)
+    // ...
+
+//    matrix_multiply_avx(A, B, C);
+//    rkf_scalar s = 0.1;
+//    scalar_mul_vector_avx(&s, B.data(), C.data());
+
+    std::cout << "A:\n" << A << std::endl;
+    std::cout << "B:\n" << B.transpose() << std::endl;
+    std::cout << "C:\n" << C.transpose() << std::endl;
+
+//    scalar_mul_vector_avx(&s, B.data(), B.data());
+
+//    std::cout << "B:\n" << B.transpose() << std::endl;
+//    std::cout << "C:\n" << B.transpose() << std::endl;
+    matrix_mul_vector_avx(A.data(), B.data(), C.data());
+    std::cout << "C:\n" << C.transpose() << std::endl;
+    std::cout << "A * b:\n" << (A * B).transpose() << std::endl;
+
+    A = MatXX::Random(N, N);
+    B = VecX::Random(N);
+    C = VecX::Zero(N);
+
+    matrix_mul_vector_avx(A.data(), B.data(), C.data());
+
+    std::cout << "A:\n" << A << std::endl;
+    std::cout << "B:\n" << B.transpose() << std::endl;
+    std::cout << "C:\n" << C.transpose() << std::endl;
+    std::cout << "A * b:\n" << (A * B).transpose() << std::endl;
+
+    return 0;
+}
+
+
+#if 0
+#include <emmintrin.h>
+#include <stdio.h>
+
+#define N 4  // Matrix size (N x N)
+
+void matrix_multiply_sse2(float* A, float* B, float* C) {
+    for (int i = 0; i < N; ++i) {
+        for (int j = 0; j < N; ++j) {
+            __m128 sum = _mm_setzero_ps();  // Initialize a 128-bit vector to zero
+
+            for (int k = 0; k < N; ++k) {
+                __m128 a = _mm_loadu_ps(&A[i * N + k]);  // Load a row of matrix A
+                __m128 b = _mm_loadu_ps(&B[k * N + j]);  // Load a column of matrix B
+                sum = _mm_add_ps(sum, _mm_mul_ps(a, b));  // Multiply and accumulate
+            }
+
+            _mm_storeu_ps(&C[i * N + j], sum);  // Store the result in matrix C
+        }
+    }
+}
+
+int main() {
+    float A[N][N];  // Matrix A
+    float B[N][N];  // Matrix B
+    float C[N][N];  // Result Matrix C
+
+    // Initialize matrices A and B (you should fill these with appropriate values)
+    // ...
+
+    matrix_multiply_sse2((float*)A, (float*)B, (float*)C);
+
+    // Print the result matrix C
+    printf("Result Matrix C:\n");
+    for (int i = 0; i < N; ++i) {
+        for (int j = 0; j < N; ++j) {
+            printf("%f ", C[i][j]);
+        }
+        printf("\n");
+    }
+
+    return 0;
+}
+#endif
