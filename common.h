@@ -5,9 +5,14 @@
 #define rkf_scalar float
 
 #define CPARS 4
-#define MatXX Matrix<rkf_scalar, Dynamic, Dynamic>
-#define VecX Matrix<rkf_scalar, Dynamic, 1>
-#define Vec8 Matrix<rkf_scalar, 8, 1>
+//#define MatXX Matrix<rkf_scalar, Dynamic, Dynamic>
+//#define VecX Matrix<rkf_scalar, Dynamic, 1>
+//#define Vec8 Matrix<rkf_scalar, 8, 1>
+
+typedef Eigen::Matrix<rkf_scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> MatXXr;
+typedef Eigen::Matrix<rkf_scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor> MatXX;
+typedef Eigen::Matrix<rkf_scalar, Eigen::Dynamic, 1> VecX;
+typedef Eigen::Matrix<rkf_scalar, 8, 1> Vec8;
 
 /// 从文件读入BAL dataset
 class BALProblem {

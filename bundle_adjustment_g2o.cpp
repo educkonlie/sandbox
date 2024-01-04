@@ -731,35 +731,63 @@ In the main function, matrices A and B are initialized with appropriate values,
  Additionally, consider aligning your data properly for better performance.
  */
 
-#include <immintrin.h>
+#include <immintrin.h>  //! avx
+#include <emmintrin.h>  //! sse2
+#include <xmmintrin.h>
 #include <stdio.h>
 
 #define N 8  // Matrix size (N x N)
 
 //! 一个数乘一个向量
+//! float * [float, float, float...float]
 void scalar_mul_vector_avx(float *s, float *B, float *C)
 {
     __m256 sum = _mm256_setzero_ps();  // Initialize a 256-bit vector to zero
 
     __m256 a = _mm256_loadu_ps(B);  // Load a row of matrix A
     __m256 b = _mm256_broadcast_ss(s);  // Broadcast a value from matrix B
-    sum = _mm256_add_ps(sum, _mm256_mul_ps(a, b));  // Multiply and accumulate
+//    sum = _mm256_add_ps(sum, _mm256_mul_ps(a, b));  // Multiply and accumulate
+    sum = _mm256_fmadd_ps(a, b, sum);
 
     _mm256_storeu_ps(C, sum);  // Store the result in matrix C
 }
+void scalar_mul_vector_128(float *s,  float *B, float *C)
+{
+    __m128 sum = _mm_setzero_ps();
+
+    __m128 a = _mm_loadu_ps(B);
+    __m128 b = _mm_broadcast_ss(s);
+    sum = _mm_fmadd_ps(a, b, sum);
+
+    _mm_storeu_ps(C, sum);
+}
+
 void matrix_mul_vector_avx(float *A, float *b, float *C)
 {
     __m256 sum = _mm256_setzero_ps();  // Initialize a 256-bit vector to zero
     for (int i = 0; i < 8; i++) {
         __m256 x = _mm256_loadu_ps(A + i * 8);  //! 它是按照A的类型来计算i的步长的
         __m256 y = _mm256_broadcast_ss(b + i);  // Broadcast a value from matrix B
-        sum = _mm256_add_ps(sum, _mm256_mul_ps(x, y));  // Multiply and accumulate
+//        sum = _mm256_add_ps(sum, _mm256_mul_ps(x, y));  // Multiply and accumulate
+        sum = _mm256_fmadd_ps(x, y, sum);
     }
     _mm256_storeu_ps(C, sum);
+}
+void matrix_mul_vector_128(float *A, float *b, float *C)
+{
+    __m128 sum = _mm_setzero_ps();  // Initialize a 256-bit vector to zero
+    for (int i = 0; i < 4; i++) {
+        __m128 x = _mm_loadu_ps(A + i * 4);  //! 它是按照A的类型来计算i的步长的
+        __m128 y = _mm_broadcast_ss(b + i);  // Broadcast a value from matrix B
+//        sum = _mm256_add_ps(sum, _mm256_mul_ps(x, y));  // Multiply and accumulate
+        sum = _mm_fmadd_ps(x, y, sum);
+    }
+    _mm_storeu_ps(C, sum);
 }
 
 int main()
 {
+#if 0
     MatXX A = MatXX::Identity(N, N);
     VecX B = VecX::Ones(N);
     VecX C = VecX::Zero(N);
@@ -800,6 +828,50 @@ int main()
     std::cout << "B:\n" << B.transpose() << std::endl;
     std::cout << "C:\n" << C.transpose() << std::endl;
     std::cout << "A * b:\n" << (A * B).transpose() << std::endl;
+
+    MatXX A4 = MatXX::Random(4, 4);
+    VecX B4 = VecX::Random(4);
+    VecX C4 = VecX::Zero(4);
+
+    rkf_scalar s = 10.0;
+
+    scalar_mul_vector_128(&s, B4.data(), C4.data());
+    std::cout << "B4:\n" << B4.transpose() << std::endl;
+    std::cout << "C4:\n" << C4.transpose() << std::endl;
+    matrix_mul_vector_128(A4.data(), B4.data(), C4.data());
+    std::cout << "A4:\n" << A4 << std::endl;
+    std::cout << "B4:\n" << B4.transpose() << std::endl;
+    std::cout << "C4:\n" << C4.transpose() << std::endl;
+    std::cout << "A4 * b4:\n" << (A4 * B4).transpose() << std::endl;
+#endif
+    int nframes = 5;
+    MatXX B = MatXX::Random(1, CPARS + 8 * nframes);
+    rkf_scalar a = (VecX::Random(1))(0);
+    MatXX C = MatXX::Random(1, CPARS + 8 * 5);
+    MatXX D;
+
+    std::cout << "B:\n" << B << std::endl;
+    std::cout << "a:\n" << a << std::endl;
+
+    timer_ACC1.tic();
+    for (int j = 0; j < 5000; j++) {
+        scalar_mul_vector_128(&a, B.data(), C.data());
+        for (int i = 0; i < nframes; i++)
+            scalar_mul_vector_avx(&a, B.data() + CPARS + 8 * i, C.data() + CPARS + 8 * i);
+    }
+    times_ACC1 += timer_ACC1.toc();
+
+    timer_ACC2.tic();
+    for (int j = 0; j < 5000; j++)
+        D = a * B;
+    times_ACC2 += timer_ACC2.toc();
+
+    std::cout << "C:\n" << C << std::endl;
+    std::cout << "a * B:\n" << D << std::endl;
+
+    std::cout << times_ACC1 << std::endl;
+    std::cout << times_ACC2 << std::endl;
+
 
     return 0;
 }
