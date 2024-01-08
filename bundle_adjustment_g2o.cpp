@@ -2,13 +2,13 @@
 #include <g2o/core/base_binary_edge.h>
 #include <g2o/core/block_solver.h>
 #include <g2o/core/optimization_algorithm_levenberg.h>
-//#include <g2o/core/optimization_algorithm_gauss_newton.h>
+#include <g2o/core/optimization_algorithm_gauss_newton.h>
 #include <g2o/solvers/csparse/linear_solver_csparse.h>
 #include <g2o/core/robust_kernel_impl.h>
 #include <iostream>
 
 #include "common.h"
-#include "sophus/se3.hpp"
+//#include "sophus/se3.hpp"
 
 #include "IndexThreadReduce.h"
 
@@ -155,8 +155,8 @@ public:
         double A = (k1 + 2 * k2 * r2) * (2 * Xc) / (Zc * Zc);
         double B = (k1 + 2 * k2 * r2) * (2 * Yc) / (Zc * Zc);
         double C = (k1 + 2 * k2 * r2) * (-2 * (Xc * Xc + Yc * Yc)) / (Zc * Zc * Zc);
-//        D = 1;
-//        A = B = C = 0;
+        D = 1;
+        A = B = C = 0;
 
         Matrix<double, 2, 3> E;
         // row 0
@@ -264,7 +264,7 @@ double times_ACC4 = 0.0;
 TicToc timer_ACC5;
 double times_ACC5 = 0.0;
 
-#if 0
+#if 1
 void my_solver_normal_equation(MatXX &, VectorXd &, MatXX &, VectorXd &);
 void my_solver_sparse(size_t &st, MatXX &J_total, VectorXd &r_total, MatXX &J, VectorXd &r);
 void SolveBA(BALProblem &bal_problem)
@@ -278,10 +278,10 @@ void SolveBA(BALProblem &bal_problem)
     typedef g2o::BlockSolver<g2o::BlockSolverTraits<9, 3>> BlockSolverType;
     typedef g2o::LinearSolverCSparse<BlockSolverType::PoseMatrixType> LinearSolverType;
     // use LM
-    auto solver = new g2o::OptimizationAlgorithmLevenberg(
-            g2o::make_unique<BlockSolverType>(g2o::make_unique<LinearSolverType>()));
-//    auto solver = new g2o::OptimizationAlgorithmGaussNewton(
-//        g2o::make_unique<BlockSolverType>(g2o::make_unique<LinearSolverType>()));
+//    auto solver = new g2o::OptimizationAlgorithmLevenberg(
+//            g2o::make_unique<BlockSolverType>(g2o::make_unique<LinearSolverType>()));
+    auto solver = new g2o::OptimizationAlgorithmGaussNewton(
+        g2o::make_unique<BlockSolverType>(g2o::make_unique<LinearSolverType>()));
     g2o::SparseOptimizer optimizer;
     optimizer.setAlgorithm(solver);
     optimizer.setVerbose(true);
@@ -316,17 +316,20 @@ void SolveBA(BALProblem &bal_problem)
     // edge
     //! 制作residual, 行数为num_observations
 
+#if 0
     vector<struct Jacobi > Js;
     for (int i = 0; i < bal_problem.num_points(); i++) {
         struct Jacobi *temp = new(struct Jacobi);
 //        temp.point = i;
         Js.push_back(*temp);
     }
+#endif
     for (int i = 0; i < bal_problem.num_observations(); ++i) {
         EdgeProjection *edge = new EdgeProjection;
         //! 应该是通过i关联到相应的v0, v1
 //        std::cout << "cam: " << bal_problem.camera_index()[i] << std::endl;
 //        std::cout << "point: " << bal_problem.point_index()[i] << std::endl;
+#if 0
         Js[bal_problem.point_index()[i]].cams.push_back(bal_problem.camera_index()[i]);
 
         Matrix<double, 2, 9> Jp = Matrix<double, 2, 9>::Zero();
@@ -343,6 +346,7 @@ void SolveBA(BALProblem &bal_problem)
         Js[bal_problem.point_index()[i]].Jps.push_back(Jp);
         Js[bal_problem.point_index()[i]].Jls.push_back(Jl);
         Js[bal_problem.point_index()[i]].Jrs.push_back(Jr);
+#endif
 
         edge->setVertex(0, vertex_pose_intrinsics[bal_problem.camera_index()[i]]);
         edge->setVertex(1, vertex_points[bal_problem.point_index()[i]]);
@@ -353,6 +357,7 @@ void SolveBA(BALProblem &bal_problem)
         edge->setRobustKernel(new g2o::RobustKernelHuber());
         optimizer.addEdge(edge);
     }
+#if 0
     int a[500];
     for (int i = 0; i < 500; i++)
         a[i] = 0;
@@ -395,13 +400,16 @@ void SolveBA(BALProblem &bal_problem)
         J1 = MatXX::Zero(ncams * 2, ncams * 9 + 1);
         J2 = MatXX::Zero(ncams * 2, 3);
         for (int j = 0; j < ncams; j++) {
+            //!将每个landmark的J, r扩展到J1, J2中，其中J2为需要被边缘化的landmark
             J1.block(j * 2, j * 9, 2, 9) = Js[i].Jps[j];
             J1.block(j * 2, ncams * 9, 2, 1) = Js[i].Jrs[j];
             J2.block(j * 2, 0, 2, 3) = Js[i].Jls[j];
         }
-        timer_ACC1.tic();
+//        timer_ACC1.tic();
         qr(J1, J2);
-        times_ACC1 += timer_ACC1.toc();
+//        times_ACC1 += timer_ACC1.toc();
+        //! 去掉上3行
+        //! temp1为Jp,  temp2为r
         MatXX temp1 = MatXX::Zero(J1.rows() - 3, bal_problem.num_cameras() * 9);
         VectorXd temp2 = J1.block(3, ncams * 9, J1.rows() - 3, 1);
 
@@ -409,9 +417,9 @@ void SolveBA(BALProblem &bal_problem)
             temp1.block(0, Js[i].cams[j] * 9, J1.rows() - 3, 9)
                     = J1.block(3, j * 9, J1.rows() - 3, 9);
         }
-//        timer_ACC1.tic();
+        timer_ACC1.tic();
         my_solver_normal_equation(H, b, temp1, temp2);
-//        times_ACC1 += timer_ACC1.toc();
+        times_ACC1 += timer_ACC1.toc();
 
         timer_ACC2.tic();
         my_solver_sparse(start_row, J, r, temp1, temp2);
@@ -433,12 +441,14 @@ void SolveBA(BALProblem &bal_problem)
 //    std::cout << "b rows: " << b.rows() << std::endl;
 //    std::cout << "b size: " << b.size() << std::endl;
 
+    MatXX H2 = J_prime.transpose() * J_prime;
+    VectorXd b2 = J_prime.transpose() * r_prime;
+
     timer_ACC3.tic();
 //    std::cout << "....b1....\n" << b.transpose() << std::endl;
 //    std::cout << "....b2....\n" << (J_prime.transpose() * r_prime).transpose() << std::endl;
 //    std::cout << "H1:\n" << H << std::endl;
-    MatXX H2 = J_prime.transpose() * J_prime;
-    VectorXd b2 = J_prime.transpose() * r_prime;
+
 
     for (int i = 0; i < H.rows(); i++)
         for (int j = 0; j < H.cols(); j++)
@@ -452,14 +462,15 @@ void SolveBA(BALProblem &bal_problem)
 
 //    std::cout << "H2:\n" << (J_prime.transpose() * J_prime) << std::endl;
     std::cout << "1 H b x:\n" << H.ldlt().solve(b).transpose() << std::endl;
-    std::cout << "2 H b x:\n" << H2.ldlt().solve(b2).transpose() << std::endl;
     times_ACC3 += timer_ACC3.toc();
+
+    std::cout << "2 H b x:\n" << H2.ldlt().solve(b2).transpose() << std::endl;
 
 
     timer_ACC4.tic();
     Eigen::LeastSquaresConjugateGradient<MatXX > lscg;
-    lscg.setMaxIterations(100);
-//    lscg.setTolerance(1e-4);
+    lscg.setMaxIterations(10000);
+    lscg.setTolerance(1e-4);
     lscg.compute(J_prime);
     VectorXd x = lscg.solve(r_prime);
     times_ACC4 += timer_ACC4.toc();
@@ -481,9 +492,10 @@ void SolveBA(BALProblem &bal_problem)
 
 //    for (int i = 0; i < bal_problem.num_points(); i++)
 //        printf("[%ld]", Js[i].cams.size());
+#endif
 
-//    optimizer.initializeOptimization();
-//    optimizer.optimize(40);
+    optimizer.initializeOptimization();
+    optimizer.optimize(40);
 
     // set to bal problem
     //! output
@@ -530,8 +542,8 @@ void my_linearizeOplus(Matrix<double, 2, 9> &pose,
     double B = (k1 + 2 * k2 * r2) * (2 * Yc) / (Zc * Zc);
     double C = (k1 + 2 * k2 * r2) * (-2 * (Xc * Xc + Yc * Yc)) / (Zc * Zc * Zc);
 
-        D = 1;
-        A = B = C = 0;
+//        D = 1;
+//        A = B = C = 0;
 
     Matrix<double, 2, 3> E;
 // row 0
@@ -686,7 +698,7 @@ void test_my_solver_pcg_and_sc()
 //! 再用一个串行操作(for循环)把缓冲区数据累加输出。
 //! 在这里面没有锁，也没有线程切换（之前一直没有搞清楚，没有跟并发区分清楚）
 
-#if 0
+#if 1
 int main(int argc, char **argv)
 {
 //    test_conservertiveResize();
@@ -695,10 +707,10 @@ int main(int argc, char **argv)
 //    test_qr();
 //    test_my_solver_pcg_and_sc();
 
-    test_marg_frame();
-    return 0;
+//    test_marg_frame();
+//    return 0;
 
-    /*if (argc != 2) {
+    if (argc != 2) {
         cout << "usage: bundle_adjustment_g2o bal_data.txt" << endl;
         return 1;
     }
@@ -708,7 +720,7 @@ int main(int argc, char **argv)
     bal_problem.Perturb(0.1, 0.5, 0.5);
     bal_problem.WriteToPLYFile("initial.ply");
     SolveBA(bal_problem);
-    bal_problem.WriteToPLYFile("final.ply");*/
+    bal_problem.WriteToPLYFile("final.ply");
 
     return 0;
 }
@@ -730,7 +742,7 @@ In the main function, matrices A and B are initialized with appropriate values,
  with the desired data before running the code.
  Additionally, consider aligning your data properly for better performance.
  */
-
+#if 0
 #include <immintrin.h>  //! avx
 #include <emmintrin.h>  //! sse2
 #include <xmmintrin.h>
@@ -785,99 +797,6 @@ void matrix_mul_vector_128(float *A, float *b, float *C)
     _mm_storeu_ps(C, sum);
 }
 
-int main()
-{
-#if 0
-    MatXX A = MatXX::Identity(N, N);
-    VecX B = VecX::Ones(N);
-    VecX C = VecX::Zero(N);
-
-    for (int i = 0; i < N; i++)
-        B(i) = i + 1;
-
-//    float A[N][N];  // Matrix A
-//    float B[N][N];  // Matrix B
-//    float C[N][N];  // Result Matrix C
-
-    // Initialize matrices A and B (you should fill these with appropriate values)
-    // ...
-
-//    matrix_multiply_avx(A, B, C);
-//    rkf_scalar s = 0.1;
-//    scalar_mul_vector_avx(&s, B.data(), C.data());
-
-    std::cout << "A:\n" << A << std::endl;
-    std::cout << "B:\n" << B.transpose() << std::endl;
-    std::cout << "C:\n" << C.transpose() << std::endl;
-
-//    scalar_mul_vector_avx(&s, B.data(), B.data());
-
-//    std::cout << "B:\n" << B.transpose() << std::endl;
-//    std::cout << "C:\n" << B.transpose() << std::endl;
-    matrix_mul_vector_avx(A.data(), B.data(), C.data());
-    std::cout << "C:\n" << C.transpose() << std::endl;
-    std::cout << "A * b:\n" << (A * B).transpose() << std::endl;
-
-    A = MatXX::Random(N, N);
-    B = VecX::Random(N);
-    C = VecX::Zero(N);
-
-    matrix_mul_vector_avx(A.data(), B.data(), C.data());
-
-    std::cout << "A:\n" << A << std::endl;
-    std::cout << "B:\n" << B.transpose() << std::endl;
-    std::cout << "C:\n" << C.transpose() << std::endl;
-    std::cout << "A * b:\n" << (A * B).transpose() << std::endl;
-
-    MatXX A4 = MatXX::Random(4, 4);
-    VecX B4 = VecX::Random(4);
-    VecX C4 = VecX::Zero(4);
-
-    rkf_scalar s = 10.0;
-
-    scalar_mul_vector_128(&s, B4.data(), C4.data());
-    std::cout << "B4:\n" << B4.transpose() << std::endl;
-    std::cout << "C4:\n" << C4.transpose() << std::endl;
-    matrix_mul_vector_128(A4.data(), B4.data(), C4.data());
-    std::cout << "A4:\n" << A4 << std::endl;
-    std::cout << "B4:\n" << B4.transpose() << std::endl;
-    std::cout << "C4:\n" << C4.transpose() << std::endl;
-    std::cout << "A4 * b4:\n" << (A4 * B4).transpose() << std::endl;
-#endif
-    int nframes = 5;
-    MatXX B = MatXX::Random(1, CPARS + 8 * nframes);
-    rkf_scalar a = (VecX::Random(1))(0);
-    MatXX C = MatXX::Random(1, CPARS + 8 * 5);
-    MatXX D;
-
-    std::cout << "B:\n" << B << std::endl;
-    std::cout << "a:\n" << a << std::endl;
-
-    timer_ACC1.tic();
-    for (int j = 0; j < 5000; j++) {
-        scalar_mul_vector_128(&a, B.data(), C.data());
-        for (int i = 0; i < nframes; i++)
-            scalar_mul_vector_avx(&a, B.data() + CPARS + 8 * i, C.data() + CPARS + 8 * i);
-    }
-    times_ACC1 += timer_ACC1.toc();
-
-    timer_ACC2.tic();
-    for (int j = 0; j < 5000; j++)
-        D = a * B;
-    times_ACC2 += timer_ACC2.toc();
-
-    std::cout << "C:\n" << C << std::endl;
-    std::cout << "a * B:\n" << D << std::endl;
-
-    std::cout << times_ACC1 << std::endl;
-    std::cout << times_ACC2 << std::endl;
-
-
-    return 0;
-}
-
-
-#if 0
 #include <emmintrin.h>
 #include <stdio.h>
 

@@ -217,6 +217,7 @@ void BALProblem::Normalize() {
         for (int j = 0; j < num_points_; ++j) {
             tmp[j] = points[3 * j + i];
         }
+        //! 中位数
         median(i) = Median(&tmp);
     }
 
