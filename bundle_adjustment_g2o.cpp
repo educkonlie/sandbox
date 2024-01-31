@@ -8,7 +8,7 @@
 #include <iostream>
 
 #include "common.h"
-//#include "sophus/se3.hpp"
+#include "sophus/se3.hpp"
 
 #include "IndexThreadReduce.h"
 
@@ -126,7 +126,7 @@ public:
 
     // not use numeric derivatives
     // TODO compute J
-#if 1
+#if 0
 // 参照slambook14 page 186-187，但是有两个区别，这里还多了畸变模型，并且归一化平面为负，所以还是需要重新推导一下
     // 畸变模型在page 102
     //! 线性化直和
@@ -155,8 +155,8 @@ public:
         double A = (k1 + 2 * k2 * r2) * (2 * Xc) / (Zc * Zc);
         double B = (k1 + 2 * k2 * r2) * (2 * Yc) / (Zc * Zc);
         double C = (k1 + 2 * k2 * r2) * (-2 * (Xc * Xc + Yc * Yc)) / (Zc * Zc * Zc);
-        D = 1;
-        A = B = C = 0;
+//        D = 1;
+//        A = B = C = 0;
 
         Matrix<double, 2, 3> E;
         // row 0
@@ -214,7 +214,7 @@ void SolveBA(BALProblem &bal_problem);
 //
 //void test_my_thread_pool();
 
-
+#ifdef NEW_METHOD
 struct Jacobi {
     vector<int > cams;
 //    int point;
@@ -222,9 +222,6 @@ struct Jacobi {
     vector<Matrix<double, 2, 3> > Jls;
     vector<Matrix<double, 2, 1> > Jrs;
 };
-
-
-
 
 void my_linearizeOplus(Matrix<double, 2, 9> &pose,
                        Matrix<double, 2, 3> &landmark,
@@ -236,6 +233,8 @@ void my_computeError(VertexPoseAndIntrinsics *v0, VertexPoint *v1, Vector2d meas
     auto proj = v0->project(v1->estimate());
     residual = proj - measurement;
 }
+#endif
+
 class TicToc {
 public:
     TicToc() {tic();}
@@ -264,7 +263,6 @@ double times_ACC4 = 0.0;
 TicToc timer_ACC5;
 double times_ACC5 = 0.0;
 
-#if 1
 void my_solver_normal_equation(MatXX &, VectorXd &, MatXX &, VectorXd &);
 void my_solver_sparse(size_t &st, MatXX &J_total, VectorXd &r_total, MatXX &J, VectorXd &r);
 void SolveBA(BALProblem &bal_problem)
@@ -278,10 +276,10 @@ void SolveBA(BALProblem &bal_problem)
     typedef g2o::BlockSolver<g2o::BlockSolverTraits<9, 3>> BlockSolverType;
     typedef g2o::LinearSolverCSparse<BlockSolverType::PoseMatrixType> LinearSolverType;
     // use LM
-//    auto solver = new g2o::OptimizationAlgorithmLevenberg(
-//            g2o::make_unique<BlockSolverType>(g2o::make_unique<LinearSolverType>()));
-    auto solver = new g2o::OptimizationAlgorithmGaussNewton(
-        g2o::make_unique<BlockSolverType>(g2o::make_unique<LinearSolverType>()));
+    auto solver = new g2o::OptimizationAlgorithmLevenberg(
+            g2o::make_unique<BlockSolverType>(g2o::make_unique<LinearSolverType>()));
+//    auto solver = new g2o::OptimizationAlgorithmGaussNewton(
+//        g2o::make_unique<BlockSolverType>(g2o::make_unique<LinearSolverType>()));
     g2o::SparseOptimizer optimizer;
     optimizer.setAlgorithm(solver);
     optimizer.setVerbose(true);
@@ -316,7 +314,7 @@ void SolveBA(BALProblem &bal_problem)
     // edge
     //! 制作residual, 行数为num_observations
 
-#if 0
+#ifdef NEW_METHOD
     vector<struct Jacobi > Js;
     for (int i = 0; i < bal_problem.num_points(); i++) {
         struct Jacobi *temp = new(struct Jacobi);
@@ -327,9 +325,11 @@ void SolveBA(BALProblem &bal_problem)
     for (int i = 0; i < bal_problem.num_observations(); ++i) {
         EdgeProjection *edge = new EdgeProjection;
         //! 应该是通过i关联到相应的v0, v1
+        //! 一条边对应一次观测，对应一个三维路标 和 一个相机
+        //! 改为PBA后， 也要沿用这个做法，事先从DSO中为每一个点记录共视图
 //        std::cout << "cam: " << bal_problem.camera_index()[i] << std::endl;
 //        std::cout << "point: " << bal_problem.point_index()[i] << std::endl;
-#if 0
+#ifdef NEW_METHOD
         Js[bal_problem.point_index()[i]].cams.push_back(bal_problem.camera_index()[i]);
 
         Matrix<double, 2, 9> Jp = Matrix<double, 2, 9>::Zero();
@@ -348,37 +348,16 @@ void SolveBA(BALProblem &bal_problem)
         Js[bal_problem.point_index()[i]].Jrs.push_back(Jr);
 #endif
 
+        //! camera_index和point_index应该是edge_index -> camera_index,  edge_index -> point_index
         edge->setVertex(0, vertex_pose_intrinsics[bal_problem.camera_index()[i]]);
         edge->setVertex(1, vertex_points[bal_problem.point_index()[i]]);
-
 
         edge->setMeasurement(Vector2d(observations[2 * i + 0], observations[2 * i + 1]));
         edge->setInformation(Matrix2d::Identity());
         edge->setRobustKernel(new g2o::RobustKernelHuber());
         optimizer.addEdge(edge);
     }
-#if 0
-    int a[500];
-    for (int i = 0; i < 500; i++)
-        a[i] = 0;
-    for (int i = 0; i < bal_problem.num_points(); i++) {
-        a[Js[i].cams.size()]++;
-    }
-    /*for (int i = 0; i < 500; i++)
-        if (a[i] != 0)
-            printf("[%d: %d]", i, a[i]);
-    printf("\n");
-    //! 遍历Js。Js以point id为下标。
-    for (int i = 0; i < bal_problem.num_points(); i++) {
-        if (Js[i].cams.size() < 10)
-            continue;
-        std::cout << "\npoint: " << i << std::endl;
-        for (int j = 0; j < Js[i].cams.size(); j++) {
-            std::cout << "\t\tcams: " << Js[i].cams[j] << std::endl;
-            std::cout << "\t\tJp:\n" << Js[i].Jps[j] << std::endl;
-            std::cout << "\t\tJl:\n" << Js[i].Jls[j] << std::endl;
-        }
-    }*/
+#ifdef NEW_METHOD
 //    ...........pose..........         r
 //    ....pose.................         r
     MatXX H = MatXX::Zero(bal_problem.num_cameras() * 9, bal_problem.num_cameras() * 9);
@@ -489,9 +468,6 @@ void SolveBA(BALProblem &bal_problem)
     std::cout << "solve H b: " << times_ACC3 << std::endl;
     std::cout << "solve J r: " << times_ACC4 << std::endl;
     std::cout << "solve qr : " << times_ACC5 << std::endl;
-
-//    for (int i = 0; i < bal_problem.num_points(); i++)
-//        printf("[%ld]", Js[i].cams.size());
 #endif
 
     optimizer.initializeOptimization();
@@ -514,7 +490,7 @@ void SolveBA(BALProblem &bal_problem)
     }
 }
 
-
+#ifdef NEW_METHOD
 void my_linearizeOplus(Matrix<double, 2, 9> &pose,
                        Matrix<double, 2, 3> &landmark,
                        VertexPoseAndIntrinsics *v0, VertexPoint *v1)
@@ -579,10 +555,6 @@ void my_linearizeOplus(Matrix<double, 2, 9> &pose,
 }
 #endif
 
-
-//void my::my() {;}
-//void my::~my() {;}
-
 void my_solver_normal_equation(MatXX &H, VecX &b, MatXX &J, VecX &r)
 {
     H += J.transpose() * J;
@@ -590,17 +562,12 @@ void my_solver_normal_equation(MatXX &H, VecX &b, MatXX &J, VecX &r)
 }
 void my_solver_sparse(size_t &start_row, MatXX &J_total, VecX &r_total, MatXX &J, VecX &r)
 {
-//    static size_t start_row = 0;
-//    static size_t start_col = 0;
-
-//    std::cout << "start_row: " << start_row << std::endl;
-
     J_total.block(start_row, 0, J.rows(), J.cols()) = J;
     r_total.segment(start_row, r.rows()) = r;
 
     start_row += J.rows();
 }
-
+#if 0
 void test_conservertiveResize()
 {
     MatXX A = MatXX::Random(10, 100);
@@ -690,6 +657,7 @@ void test_my_solver_pcg_and_sc()
 
     delete my1;
 }
+#endif
 
 
 
@@ -701,15 +669,6 @@ void test_my_solver_pcg_and_sc()
 #if 1
 int main(int argc, char **argv)
 {
-//    test_conservertiveResize();
-
-//    test_my_thread_pool();
-//    test_qr();
-//    test_my_solver_pcg_and_sc();
-
-//    test_marg_frame();
-//    return 0;
-
     if (argc != 2) {
         cout << "usage: bundle_adjustment_g2o bal_data.txt" << endl;
         return 1;
@@ -719,8 +678,10 @@ int main(int argc, char **argv)
     bal_problem.Normalize();
     bal_problem.Perturb(0.1, 0.5, 0.5);
     bal_problem.WriteToPLYFile("initial.ply");
+//    bal_problem.myDraw("init");
     SolveBA(bal_problem);
     bal_problem.WriteToPLYFile("final.ply");
+    bal_problem.myDraw("final");
 
     return 0;
 }

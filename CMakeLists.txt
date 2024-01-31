@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 2.8)
 
 project(bundle_adjustment)
 set(CMAKE_BUILD_TYPE "Release")
-set(CMAKE_CXX_FLAGS "-O3 -std=c++17 -g -msse2 -mavx -mfma -Wno-return-type")
-#set(CMAKE_CXX_FLAGS "-O3 -std=c++17  -Wno-return-type -fopenmp")
+#set(CMAKE_CXX_FLAGS "-O3 -std=c++17 -g -msse2 -mavx -mfma -Wno-return-type")
+set(CMAKE_CXX_FLAGS "-O3 -std=c++17  -Wno-return-type -fopenmp")
 #set(CMAKE_CXX_FLAGS "-O3 -std=c++17  -Wno-return-type -DEIGEN_DONT_VECTORIZE")
 
 LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
@@ -36,7 +36,9 @@ endif()
 add_library(bal_common common.cpp)
 add_executable(bundle_adjustment_g2o bundle_adjustment_g2o.cpp)
 #
-target_link_libraries(bundle_adjustment_g2o  boost_thread pthread ${G2O_LIBS} bal_common)
+#target_link_libraries(bundle_adjustment_g2o  boost_thread pthread ${G2O_LIBS} bal_common)
+target_link_libraries(bundle_adjustment_g2o  boost_thread pthread ${G2O_LIBS}
+        bal_common ${OpenCV_LIBS} ${Pangolin_LIBRARIES})
 
 add_executable(directBA directBA.cpp)
 target_link_libraries(directBA ${G2O_LIBS} ${OpenCV_LIBS} ${Pangolin_LIBRARIES})

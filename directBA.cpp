@@ -31,14 +31,23 @@ typedef vector<Sophus::SE3d, Eigen::aligned_allocator<Sophus::SE3d>> VecSE3;
 typedef vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> VecVec3d;
 
 // global variables
-string pose_file = "../poses.txt";
-string points_file = "../points.txt";
+//string pose_file = "../poses.txt";
+string pose_file = "/mnt/data/dso-4-reading/result.txt";
+//string pose_file = "/home/ruankefeng/DSO/build/bin/result.txt";
+
+//string points_file = "../points.txt";
+string points_file = "/mnt/data/dso-4-reading/point_cloud.txt";
 
 // intrinsics
 float fx = 277.34;
 float fy = 291.402;
 float cx = 312.234;
 float cy = 239.777;
+
+//float fx = 706.01;
+//float fy = 703.522;
+//float cx = 600.911;
+//float cy = 182.128;
 
 // bilinear interpolation
 inline float GetPixelValue(const cv::Mat &img, float x, float y) {
@@ -76,7 +85,7 @@ public:
     virtual void oplusImpl(const double *update_) {
         Eigen::Map<const Eigen::Matrix<double, 6, 1>> update(update_);
         this->setEstimate(Sophus::SE3d::exp(update) * this->estimate());
-        cout << "===========" << endl;
+//        cout << "===========" << endl;
     }
 };
 
@@ -129,8 +138,16 @@ public:
         Vector3d pc = (v0 -> estimate()) * (v1 -> estimate());
         pc /= pc[2];
         double u = pc[0] * fx + cx;
+
         double v = pc[1] * fy + cy;
 //        cout << "u " << u << " v " << v <<endl;
+        if (u - 2 < 0 || u + 1 >= this->targetImg.cols || v - 2 < 0 || v + 1 >= this->targetImg.rows) {
+            for (int k = 0; k < 16; k++)
+                _error[k] = 0;
+            g_outlier++;
+            return;
+        }
+
         // 如果变为outlier点，则使用临近的边界值（即不好不坏)
         if (u - 2 < 0)
             u = 2;
@@ -140,7 +157,7 @@ public:
             v = 2;
         if (v + 1 >= this->targetImg.rows)
             v = this->targetImg.rows - 2;
-//        cout << "u " << u << " v " << v <<endl;
+
 //        if (this->outlier == true) {
 //            this->outlier = false;
 //            g_outlier--;
@@ -151,8 +168,10 @@ public:
 //            this->outlier = true;
 //        } else {
         int k = 0;
+        //! [-2, 1] X [-2, 1]，总共16个点
         for (int i = -2; i <= 1; i++)
             for (int j = -2; j <= 1; j++) {
+                //! _measurement是老图里的色彩，根据灰度一致假设赋为该路标在新的路标坐标和相机位姿下的投影估计值
                 _error[k++] = GetPixelValue(this->targetImg, u + i, v + j) - _measurement[k];
 //                cout << "_error " << _error << endl;
             }
@@ -185,10 +204,11 @@ int main(int argc, char **argv) {
     ifstream fin(pose_file);
 
     while (!fin.eof()) {
+#if 0
         double timestamp = 0;
         fin >> timestamp;
-        if (timestamp == 0)
-            break;
+//        if (timestamp == 0)
+//            break;
         double data[7];
         for (auto &d: data)
             fin >> d;
@@ -196,10 +216,34 @@ int main(int argc, char **argv) {
                 Eigen::Quaterniond(data[6], data[3], data[4], data[5]),
                 Eigen::Vector3d(data[0], data[1], data[2])
         ));
+#endif
+#if 1
+        double data[12];
+        for (auto &d: data)
+            fin >> d;
+        Eigen::Matrix<double, 3, 3> R;
+        R(0, 0) = data[0];
+        R(0, 1) = data[1];
+        R(0, 2) = data[2];
+        R(1, 0) = data[4];
+        R(1, 1) = data[5];
+        R(1, 2) = data[6];
+        R(2, 0) = data[8];
+        R(2, 1) = data[9];
+        R(2, 2) = data[10];
+        Eigen::Vector<double, 3> t;
+        t[0] = data[3];
+        t[1] = data[7];
+        t[2] = data[11];
+        poses.push_back(Sophus::SE3d(Sophus::SO3d(R), t));
+#endif
         if (!fin.good())
             break;
     }
     fin.close();
+
+//    Draw(poses, points);
+//    return 0;
 
 //    vector<double *> color;  // 由color组成的数组。所谓的color其实周边的16个像素值
     vector<Vector16d > color;
@@ -212,10 +256,12 @@ int main(int argc, char **argv) {
             break;
         points.push_back(Eigen::Vector3d(xyz[0], xyz[1], xyz[2]));
 //        double *c = new double[16];
+#if 0
         Vector16d c;
         for (int i = 0; i < 16; i++)
             fin >> c[i];
         color.push_back(c); // color数组元素跟points数组元素一一对应。
+#endif
 
         if (fin.good() == false)
             break;
@@ -225,13 +271,21 @@ int main(int argc, char **argv) {
     cout << "poses: " << poses.size() << ", points: " << points.size() << endl;
     cout << "observations(edges): " << poses.size() * points.size() << endl;
 
+//    Draw(poses, points);
+
     // read images
     vector<cv::Mat> images;
-    boost::format fmt("../%d.png");
+//    boost::format fmt("../%d.png");
+    boost::format fmt("/mnt/data/kitti_dataset/sequences/%06d.png");
+    cout << (fmt % 01).str() << endl;
+    return 0;
     for (int i = 0; i < 6; i++) {
         images.push_back(cv::imread((fmt % (i + 1)).str(), 0));
-        cout << "imggg " << images[i].rows << endl;
+        cout << "image rows: " << images[i].rows << endl;
+        cout << "image cols: " << images[i].cols << endl;
     }
+
+    return 0;
 
     // build optimization problem
 //    typedef g2o::BlockSolver<g2o::BlockSolverTraits<6, 3>> DirectBlock;  // 求解的向量是6＊1的
@@ -260,6 +314,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < points.size(); i++) {
         VertexPoint * v_p = new VertexPoint();
         v_p->setId(i);
+        //! points[i]为三维向量
         v_p->setEstimate(points[i]);
         v_p->setMarginalized(true);
         optimizer.addVertex(v_p);
@@ -274,6 +329,7 @@ int main(int argc, char **argv) {
         vertices_sophus.push_back(v_s);
     }
     // 每条边赋值一个color作为观测值，一个观测一条边，总共poses * points条边.
+    //! 这里是稠密图了
     for (int i = 0; i < poses.size(); i++) {
         for (int j = 0; j < points.size(); j++) {
 //    for (int i = 0; i < 10; i++) {
@@ -291,7 +347,7 @@ int main(int argc, char **argv) {
 
     // perform optimization
     optimizer.initializeOptimization(0);
-    optimizer.optimize(200);
+    optimizer.optimize(400);
 
     // TODO fetch data from the optimizer
     // START YOUR CODE HERE
@@ -313,7 +369,7 @@ int main(int argc, char **argv) {
 void Draw(const VecSE3 &poses, const VecVec3d &points) {
     if (poses.empty() || points.empty()) {
         cerr << "parameter is empty!" << endl;
-        return;
+//        return;
     }
 
     // create pangolin window and plot the trajectory
@@ -339,13 +395,19 @@ void Draw(const VecSE3 &poses, const VecVec3d &points) {
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
         // draw poses
-        float sz = 0.1;
+        float sz = 1.0;
         int width = 640, height = 480;
-        for (auto &Tcw: poses) {
+//        for (auto &Tcw: poses) {
+        for (auto &Twc: poses) {
             glPushMatrix();
-            Sophus::Matrix4f m = Tcw.inverse().matrix().cast<float>();
+
+            //! 这样就cam to world了
+//            Sophus::Matrix4f m = Tcw.inverse().matrix().cast<float>();
+            Sophus::Matrix4f m = Twc.matrix().cast<float>();
             glMultMatrixf((GLfloat *) m.data());
-            glColor3f(1, 0, 0);
+
+            //! 下面的是在cam坐标系下画的相机，然后会用gl的Matrix乘上去转换为世界坐标系
+            glColor3f(1, 1, 0);
             glLineWidth(2);
             glBegin(GL_LINES);
             glVertex3f(0, 0, 0);
@@ -365,13 +427,15 @@ void Draw(const VecSE3 &poses, const VecVec3d &points) {
             glVertex3f(sz * (0 - cx) / fx, sz * (0 - cy) / fy, sz);
             glVertex3f(sz * (width - 1 - cx) / fx, sz * (0 - cy) / fy, sz);
             glEnd();
+
             glPopMatrix();
         }
 
         // points
-        glPointSize(2);
+        glPointSize(1);
         glBegin(GL_POINTS);
         for (size_t i = 0; i < points.size(); i++) {
+            //! 第i个点
             glColor3f(0.0, points[i][2] / 4, 1.0 - points[i][2] / 4);
             glVertex3d(points[i][0], points[i][1], points[i][2]);
         }
