@@ -61,10 +61,16 @@ int pattern_dy[8] = {-2, -1, -1, 0, 0, 0, 1, 2};
 //float cx = 312.234;
 //float cy = 239.777;
 
-float fx = 705.918;
+//float fx = 706.01;
+//float fy = 703.522;
+//float cx = 600.911;
+//float cy = 182.127;
+
+float fx = 705.919;
 float fy = 703.522;
-float cx = 600.927;
-float cy = 182.12;
+float cx = 600.928;
+float cy = 182.121;
+
 
 // bilinear interpolation
 inline float GetPixelValue(const cv::Mat &img, float x, float y) {
@@ -83,7 +89,7 @@ inline float GetPixelValue(const cv::Mat &img, float x, float y) {
 class VertexSophus : public g2o::BaseVertex<6, Sophus::SE3d> {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
+//    VertexSophus(){}
     VertexSophus(int host_id, double a, double b)
     {
         _host_id = host_id;
@@ -118,6 +124,8 @@ public:
     // update _estimate
     virtual void oplusImpl(const double *update_) {
         Eigen::Map<const Eigen::Matrix<double, 6, 1>> update(update_);
+//        Sophus::SO3d R = Sophus::exp(Vector3d(update[0], update[1], update[2])));
+//        Vector3d t = Vector3d(update[3], update[4], update[5]);
         this->setEstimate(Sophus::SE3d::exp(update) * this->estimate());
 //        cout << "===========" << endl;
     }
@@ -131,6 +139,8 @@ private:
 class VertexPoint : public g2o::BaseVertex<3, Vector3d> {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
+
+//    VertexPoint(){}
 
     VertexPoint(int host_id, double a, double b)
     {
@@ -175,8 +185,8 @@ long long g_outlier = 0;
 // 同时，应该归属于VertexPoint的color，和
 typedef Eigen::Matrix<double,16,1> Vector16d;
 typedef Eigen::Matrix<double,8,1> Vector8d;
-//class EdgeDirectProjection : public g2o::BaseBinaryEdge<16, Vector16d, VertexSophus, VertexPoint> {
-class EdgeDirectProjection : public g2o::BaseBinaryEdge<8, Vector8d, VertexSophus, VertexPoint> {
+class EdgeDirectProjection : public g2o::BaseBinaryEdge<16, Vector16d, VertexSophus, VertexPoint> {
+//class EdgeDirectProjection : public g2o::BaseBinaryEdge<8, Vector8d, VertexSophus, VertexPoint> {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
@@ -199,10 +209,10 @@ public:
         auto v1 = (VertexPoint *) _vertices[1];
 
         //! host_id target_id同一个也不要紧
-        double a = 1.0;
-        double b = 0.0;
-//        double a = exp(v0->get_a() - v1->get_a());
-//        double b = v1->get_b() - a * v0->get_b();
+//        double a = 1.0;
+//        double b = 0.0;
+        double a = exp(v0->get_a() - v1->get_a());
+        double b = v0->get_b() - a * v1->get_b();
 
         //! v0里保存的似乎是Tcw，但是从poses读进来的应该是Twc
 //        Sophus::SO3d R = (v0->estimate()).so3();
@@ -211,10 +221,10 @@ public:
         Vector3d pc = (v0 -> estimate().inverse()) * (v1 -> estimate());
         pc /= pc[2];
         double u = pc[0] * fx + cx;
-
         double v = pc[1] * fy + cy;
 //        cout << "u " << u << " v " << v <<endl;
 
+/*
         if (u - 2 < 0 || u + 1 >= this->targetImg.cols || v - 2 < 0 || v + 1 >= this->targetImg.rows) {
 //            for (int k = 0; k < 16; k++)
             for (int k = 0; k < 8; k++)
@@ -222,6 +232,7 @@ public:
             g_outlier++;
            // return;
         }
+*/
 
         // 如果变为outlier点，则使用临近的边界值（即不好不坏)
         if (u - 2 < 0)
@@ -233,21 +244,22 @@ public:
         if (v + 1 >= this->targetImg.rows)
             v = this->targetImg.rows - 2;
         int k = 0;
-        /*
         //! [-2, 1] X [-2, 1]，总共16个点
         for (int i = -2; i <= 1; i++)
             for (int j = -2; j <= 1; j++) {
                 //! _measurement是老图里的色彩，根据灰度一致假设赋为该路标在新的路标坐标和相机位姿下的投影估计值
-                _error[k++] = GetPixelValue(this->targetImg, u + i, v + j) - _measurement[k];
+//                _error[k++] = GetPixelValue(this->targetImg, u + i, v + j) - _measurement[k];
+                _error[k] = GetPixelValue(this->targetImg, u + i, v + j) - (a * _measurement[k] + b);
+                k++;
             }
-        */
-        for (int i = 0; i < 8; i++) {
+
+       /* for (int i = 0; i < 8; i++) {
             int dx = pattern_dx[i];
             int dy = pattern_dy[i];
-//            _error[k] = GetPixelValue(this->targetImg, u + dx, v + dy) - (a * _measurement[k] + b);
-            _error[k] = GetPixelValue(this->targetImg, u + dx, v + dy) - _measurement[k];
+	    _error[k] = GetPixelValue(this->targetImg, u + dx, v + dy) - (a * _measurement[k] + b);
+//	    _error[k] = GetPixelValue(this->targetImg, u + dx, v + dy) - _measurement[k];
             k++;
-        }
+        }*/
 
         // TODO END YOUR CODE HERE
     }
@@ -268,6 +280,7 @@ public:
 // plot the poses and points for you, need pangolin
 //void Draw(const VecSE3 &poses, const VecVec3d &points);
 void Draw(string title, const VecSE3 &poses, const VecVec3d points[], const vector<int > &host);
+void printResult(std::string file, const VecSE3 &poses);
 
 int main(int argc, char **argv) {
 
@@ -275,6 +288,7 @@ int main(int argc, char **argv) {
     VecSE3 poses;
     VecVec3d points[100 * 100];
     vector<Vector8d > color[100 * 100];
+    vector<Vector16d > color16[100 * 100];
     ifstream fin(pose_file);
 
     while (!fin.eof()) {
@@ -316,7 +330,7 @@ int main(int argc, char **argv) {
             break;
     }
     fin.close();
-    poses.pop_back();
+//    poses.pop_back();
 
 //    Draw(poses, points);
 //    return 0;
@@ -365,7 +379,7 @@ int main(int argc, char **argv) {
         double a, b;
         fin >> a;
         fin >> b;
-        std::cout << a << " " << b << std::endl;
+//        std::cout << a << " " << b << std::endl;
         affLLa.push_back(a);
         affLLb.push_back(b);
 //        }
@@ -439,6 +453,7 @@ int main(int argc, char **argv) {
     }
 
 //    Draw("before", poses, points, host);
+//    return 0;
 
 #if 1
 
@@ -476,22 +491,12 @@ std::cout << "1....." << std::endl;
     // START YOUR CODE HERE
     //! 按host循环
     // 一个路标一个顶点，一个位姿也是一个顶点。
-//    for (int host_id : host) {
-//        for (Vector3d pw : points[host_id]) {
-//            glColor3f(0, (1.0 * host_id) / poses.size(),  1.0 - (1.0 * host_id) / poses.size());
-//            glVertex3d(pw[0], pw[1], pw[2]);
-//        }
-//    }
     vector<VertexPoint *> vertices_points[100 * 100]; // 最多100 * 100个host
-//    std::cout << "4.5....." << std::endl;
     int a = 1;
     for (int host_id : host) {
-//        std::cout << "4.6....." << host_id << std::endl;
-//        std::cout << "4.6..a..." << affLLa.size() << std::endl;
-//        std::cout << "4.6..b..." << affLLb.size() << std::endl;
-//        std::cout << affLLa[host_id] << "......." << affLLb[host_id] << std::endl;
         for (Vector3d p : points[host_id]) {
             VertexPoint * v_p = new VertexPoint(host_id, affLLa[host_id], affLLb[host_id]);
+//            VertexPoint * v_p = new VertexPoint();
             v_p->setId(a++);
             v_p->setEstimate(p);
             v_p->setMarginalized(true);
@@ -514,11 +519,37 @@ std::cout << "1....." << std::endl;
 
     std::cout << "5....." << std::endl;
 
+    for (int host_id : host) {
+        for (int j = 0; j < points[host_id].size(); j++) {
+//            std::cout << "5...1.." << std::endl;
+            Vector3d pc = (poses[host_id].inverse()) * points[host_id][j];
+//            std::cout << "5...2.." << std::endl;
+            pc /= pc[2];
+            double u = pc[0] * fx + cx;
+            double v = pc[1] * fy + cy;
+            if (u - 2 < 0 || u + 1 >= images[host_id].cols || v - 2 < 0 || v + 1 >= images[host_id].rows) {
+//            if (u - 4 < 0 || u + 2 >= images[host_id].cols || v - 4 < 0 || v + 2 >= images[host_id].rows) {
+                std::cout << "error!!!!!!!!!!!!" << std::endl;
+            }
+            Vector16d tmp;
+            int k = 0;
+            for (int x = -2; x <= 1; x++)
+                for (int y = -2; y <= 1; y++)
+                    tmp[k++] = GetPixelValue(images[host_id], u + x, v + y);
+            color16[host_id].push_back(tmp);
+        }
+    }
+
+
+
     vector<VertexSophus *> vertices_sophus;
     for (int i = 0; i < poses.size(); i++) {
         VertexSophus *v_s = new VertexSophus(i, affLLa[i], affLLb[i]);
+//        VertexSophus *v_s = new VertexSophus();
 //        v_s->setId(i + points.size());
 //        v_s->setId(i + points_num);
+
+//        std::cout << "6....." << i <<  std::endl;
         v_s->setId(a++);
 //        assert(v_s->getId() == i + points_num + 10);
       //! 这里应该错了，应该是Tcw而不是Twc
@@ -536,6 +567,8 @@ std::cout << "1....." << std::endl;
 //            poses[host_id]....poses[marg_id]
 //            points[host_id]
 //        printf("from [%d] to [%d], projected [%ld] points\n", host_id, marg_id, points[host_id].size());
+//        for (int i = (host_id - 15 < 0) ? 0 : (host_id - 15);
+//             (i < marg_id + 0) && (i < poses.size()); i++) {
         for (int i = host_id; i < marg_id; i++) {
             for (int j = 0; j < vertices_points[host_id].size(); j++) {
                 //! 按j计数point，i为j对应的s的id和marginalizeAt（也可以
@@ -543,12 +576,15 @@ std::cout << "1....." << std::endl;
 
                 edge->setVertex(0, vertices_sophus[i]); //! 投影的面从host_id....marg_id
                 edge->setVertex(1, (vertices_points[host_id])[j]); //! 投影的点为所有的vp[host_id]
-                edge->setMeasurement(Vector8d((color[host_id])[j]));
-                edge->setInformation(Eigen::Matrix<double, 8, 8>::Identity());
+
+                edge->setMeasurement(color16[host_id][j]);
+//                edge->setMeasurement(color[host_id][j]);
+//                edge->setInformation(Eigen::Matrix<double, 8, 8>::Identity());
+                edge->setInformation(Eigen::Matrix<double, 16, 16>::Identity());
                 edge->setRobustKernel(new g2o::RobustKernelHuber());
                 optimizer.addEdge(edge);
             }
-           // break;
+//            break;
         }
     }
 //    for (int i = 0; i < poses.size(); i++) {
@@ -568,7 +604,7 @@ std::cout << "1....." << std::endl;
     std::cout << "7....." << std::endl;
     // perform optimization
     optimizer.initializeOptimization(0);
-    optimizer.optimize(30);
+    optimizer.optimize(20);
 //    optimizer.optimize(0);
 
     // TODO fetch data from the optimizer
@@ -585,6 +621,7 @@ std::cout << "1....." << std::endl;
     // plot the optimized points and poses
 #endif
     Draw(string("after"), poses, points, host);
+    printResult(string("/mnt/data/dso-4-reading/gpba_result.txt"), poses);
 
     // delete color data
 //    for (auto &c: color) delete[] c;
@@ -598,7 +635,7 @@ void Draw(string title, const VecSE3 &poses, const VecVec3d points[], const vect
 //    }
 
     // create pangolin window and plot the trajectory
-    pangolin::CreateWindowAndBind(title, 1024, 768);
+    pangolin::CreateWindowAndBind(title.c_str(), 1024, 768);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -686,3 +723,23 @@ void Draw(string title, const VecSE3 &poses, const VecVec3d points[], const vect
     }
 }
 
+
+void printResult(std::string file, const VecSE3 &poses)
+{
+    std::ofstream myfile;
+    myfile.open (file.c_str());
+    myfile << std::setprecision(15);
+
+    bool first = true;
+    for (Sophus::SE3d pose : poses) {
+        const Eigen::Matrix<double,3,3> R = pose.so3().matrix();
+        const Eigen::Matrix<double,3,1> T = pose.translation().transpose();
+        if (!first)
+            myfile << "\n";
+        myfile<< R(0,0) <<" "<<R(0,1)<<" "<<R(0,2)<<" "<<T(0,0)<<" "<<
+              R(1,0) <<" "<<R(1,1)<<" "<<R(1,2)<<" "<<T(1,0)<<" "<<
+              R(2,0) <<" "<<R(2,1)<<" "<<R(2,2)<<" "<<T(2,0);
+        first = false;
+    }
+    myfile.close();
+}
