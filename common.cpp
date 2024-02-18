@@ -179,6 +179,7 @@ void BALProblem::WriteToPLYFile(const std::string &filename) const {
 
 //! 根据相机内参计算出相机的轴向和相机光心
 //! 角轴表示是用一个三维向量来表示旋转，该向量的方向为轴的方向，该向量的长度用来表示沿轴旋转的角度
+//! 角轴即是so3， 旋转矩阵即是SO3，也就是分别是李代数和对应的李群
 void BALProblem::CameraToAngelAxisAndCenter(const double *camera,
                                             double *angle_axis,
                                             double *center) const {
@@ -263,11 +264,13 @@ void BALProblem::Normalize() {
 void BALProblem::Perturb(const double rotation_sigma,
                          const double translation_sigma,
                          const double point_sigma) {
+    //! 三个sigma是加入噪声的参数
     assert(point_sigma >= 0.0);
     assert(rotation_sigma >= 0.0);
     assert(translation_sigma >= 0.0);
 
     double *points = mutable_points();
+    //! 首先将点的坐标加噪声
     if (point_sigma > 0) {
         for (int i = 0; i < num_points_; ++i) {
             PerturbPoint3(point_sigma, points + 3 * i);
@@ -276,19 +279,22 @@ void BALProblem::Perturb(const double rotation_sigma,
 
     for (int i = 0; i < num_cameras_; ++i) {
         double *camera = mutable_cameras() + camera_block_size() * i;
-
         double angle_axis[3];
         double center[3];
         // Perturb in the rotation of the camera in the angle-axis
         // representation
+        //! pose -> (angle_axis, center)
         CameraToAngelAxisAndCenter(camera, angle_axis, center);
+        //! 对角轴加入噪声
         if (rotation_sigma > 0.0) {
             PerturbPoint3(rotation_sigma, angle_axis);
         }
         AngleAxisAndCenterToCamera(angle_axis, center, camera);
 
+        //! 对相机位移加入噪声
+        //! camera_block_size() - 6即是3，它这里的写法过于奇怪
         if (translation_sigma > 0.0)
-            PerturbPoint3(translation_sigma, camera + camera_block_size() - 6);
+            PerturbPoint3(translation_sigma, camera + (camera_block_size() - 6));
     }
 }
 // intrinsics

@@ -39,6 +39,7 @@ struct PoseAndIntrinsics {
     }
 
     /// 将估计值放入内存
+    /// 将估计值输出到data_addr
     const void set_to(double *data_addr) {
         auto r = rotation.log();
         for (int i = 0; i < 3; ++i) data_addr[i] = r[i];
@@ -62,6 +63,7 @@ public:
     VertexPoseAndIntrinsics() {}
 
     virtual void setToOriginImpl() override {
+        //! _estimate可以塑造为任何类型
         _estimate = PoseAndIntrinsics();
     }
 
@@ -126,7 +128,7 @@ public:
 
     // not use numeric derivatives
     // TODO compute J
-#if 0
+#if 1
 // 参照slambook14 page 186-187，但是有两个区别，这里还多了畸变模型，并且归一化平面为负，所以还是需要重新推导一下
     // 畸变模型在page 102
     //! 线性化直和

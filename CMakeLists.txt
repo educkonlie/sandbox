@@ -40,5 +40,7 @@ add_executable(bundle_adjustment_g2o bundle_adjustment_g2o.cpp)
 target_link_libraries(bundle_adjustment_g2o  boost_thread pthread ${G2O_LIBS}
         bal_common ${OpenCV_LIBS} ${Pangolin_LIBRARIES})
 
-add_executable(directBA directBA.cpp)
+add_executable(directBA directBA.cpp
+        globalPBA_view.cpp
+        globalPBA.cpp)
 target_link_libraries(directBA ${G2O_LIBS} ${OpenCV_LIBS} ${Pangolin_LIBRARIES})
