@@ -3,7 +3,7 @@
 //
 #include "globalPBA.h"
 extern float fx, fy, cx, cy;
-void Draw(string title, const VecSE3d &poses, const VecVec3d points[], const vector<int > &host)
+void Draw(string title, const VecSE3d &cams, const VecVec3d points[], const vector<int > &host)
 {
     // create pangolin window and plot the trajectory
     pangolin::CreateWindowAndBind(title.c_str(), 1024, 768);
@@ -31,8 +31,7 @@ void Draw(string title, const VecSE3d &poses, const VecVec3d points[], const vec
         // draw poses
         float sz = 0.5;
         int width = 1224, height = 368;
-//        for (auto &Tcw: poses) {
-        for (auto &Twc: poses) {
+        for (auto &Twc: cams) {
             glPushMatrix();
 
             //! 这样就cam to world了
@@ -71,9 +70,7 @@ void Draw(string title, const VecSE3d &poses, const VecVec3d points[], const vec
         for (int host_id : host) {
             for (Vec3d pw : points[host_id]) {
                 //! 第i个点
-//                std::cout << host_id / poses.size() << std::endl;
-//                glColor3f(0, pw[2] / 4, 1.0 - pw[2] / 4);
-                glColor3f(0, (1.0 * host_id) / poses.size(),  1.0 - (1.0 * host_id) / poses.size());
+                glColor3f(0, (1.0 * host_id) / cams.size(),  1.0 - (1.0 * host_id) / cams.size());
 //                if (host_id % 2 == 0)
 //                    glColor3f(0, 1.0, 0);
 //                else
@@ -81,13 +78,6 @@ void Draw(string title, const VecSE3d &poses, const VecVec3d points[], const vec
                 glVertex3d(pw[0], pw[1], pw[2]);
             }
         }
-        /*
-        for (size_t i = 0; i < points.size(); i++) {
-            //! 第i个点
-            glColor3f(0.0, points[i][2] / 4, 1.0 - points[i][2] / 4);
-            glVertex3d(points[i][0], points[i][1], points[i][2]);
-        }
-        */
         glEnd();
 
         pangolin::FinishFrame();
@@ -95,16 +85,16 @@ void Draw(string title, const VecSE3d &poses, const VecVec3d points[], const vec
     }
     pangolin::QuitAll();
 }
-void printResult(std::string file, const VecSE3d &poses)
+void printResult(std::string file, const VecSE3d &cams)
 {
     std::ofstream myfile;
     myfile.open (file.c_str());
     myfile << std::setprecision(15);
 
     bool first = true;
-    for (Sophus::SE3d pose : poses) {
-        const Eigen::Matrix<double,3,3> R = pose.so3().matrix();
-        const Eigen::Matrix<double,3,1> T = pose.translation().transpose();
+    for (Sophus::SE3d cam : cams) {
+        const Eigen::Matrix<double,3,3> R = cam.so3().matrix();
+        const Eigen::Matrix<double,3,1> T = cam.translation().transpose();
         if (!first)
             myfile << "\n";
         myfile<< R(0,0) <<" "<<R(0,1)<<" "<<R(0,2)<<" "<<T(0,0)<<" "<<

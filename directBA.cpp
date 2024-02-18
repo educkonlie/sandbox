@@ -1,13 +1,12 @@
 #include "globalPBA.h"
 
 //! 关于术语使用
-//! 输入输出使用 pose point  表明是纯数值
-//! 内部优化包括g2o优化使用 cam landmark  表明是两个有着具体内容的对象
+//! 输入输出使用 camera point  表明是纯数值
+//! 内部优化包括g2o优化使用 pose landmark，这是两个vertex
 
 // global variables
-std::string pose_file = "/mnt/data/dso-4-reading/result.txt";
+std::string camera_file = "/mnt/data/dso-4-reading/result.txt";
 std::string point_file = "/mnt/data/dso-4-reading/point_cloud.txt";
-std::string aff_calib_file = "/mnt/data/dso-4-reading/aff_calib.txt";
 
 /*
         dx 0 dy -2
@@ -42,34 +41,19 @@ float cy = 182.121;
 //float cx = 0.0;
 //float cy = 0.0;
 
-// plot the poses and points for you, need pangolin
-//void Draw(const VecSE3 &poses, const VecVec3d &points);
-void Draw(std::string title, const VecSE3d &poses, const VecVec3d points[], const vector<int > &host);
-void printResult(std::string file, const VecSE3d &poses);
+// plot the cams and points for you, need pangolin
+void Draw(std::string title, const VecSE3d &cams, const VecVec3d points[], const vector<int > &host);
+void printResult(std::string file, const VecSE3d &cams);
 
 int main(int argc, char **argv)
 {
     // read poses and points
-    VecSE3d poses;
+    VecSE3d cams;
     VecVec3d points[100 * 100];
     std::vector<Vec8d > color[100 * 100];
-    std::vector<Vec16d > color16[100 * 100];
 
-    std::ifstream fin(pose_file);
+    std::ifstream fin(camera_file);
     while (!fin.eof()) {
-#if 0
-        double timestamp = 0;
-        fin >> timestamp;
-//        if (timestamp == 0)
-//            break;
-        double data[7];
-        for (auto &d: data)
-            fin >> d;
-        poses.push_back(Sophus::SE3d(
-                Eigen::Quaterniond(data[6], data[3], data[4], data[5]),
-                Eigen::Vector3d(data[0], data[1], data[2])
-        ));
-#endif
 #if 1
         double data[12];
         for (auto &d: data)
@@ -88,7 +72,7 @@ int main(int argc, char **argv)
         t[0] = data[3];
         t[1] = data[7];
         t[2] = data[11];
-        poses.push_back(Sophus::SE3d(Sophus::SO3d(R), t));
+        cams.push_back(Sophus::SE3d(Sophus::SO3d(R), t));
 #endif
         if (!fin.good())
             break;
@@ -127,31 +111,12 @@ int main(int argc, char **argv)
     }
     fin.close();
 
-    fin.open(aff_calib_file);
-    std::vector<double > affLLa;
-    std::vector<double > affLLb;
-
-    while (!fin.eof()) {
-        double a, b;
-        fin >> a;
-        fin >> b;
-        affLLa.push_back(a);
-        affLLb.push_back(b);
-        if (fin.good() == false)
-            break;
-    }
-    assert(affLLa.size() == poses.size());
-    assert(affLLb.size() == poses.size());
-    fin.close();
-    std::cout << "aff_calib read " << affLLa.size() << std::endl;
-    fin.close();
-
     int points_num = 0;
-    for (int i = 0; i < poses.size(); i++)
+    for (int i = 0; i < cams.size(); i++)
         points_num += points[i].size();
 
-    cout << "poses: " << poses.size() << ", points: " << points_num << endl;
-    cout << "observations(edges): " << poses.size() * points_num << endl;
+    cout << "cams: " << cams.size() << ", points: " << points_num << endl;
+    cout << "observations(edges): " << cams.size() * points_num << endl;
     int obs = 0;
     for (int i = 0; i < host.size(); i++) {
         int host_id = host[i];
@@ -161,18 +126,6 @@ int main(int argc, char **argv)
         }
     }
     cout << "observations(edges): " << obs << endl;
-
-    // read images
-    vector<cv::Mat> images;
-    boost::format fmt("/mnt/data/kitti_dataset/sequences/06-sample/image_0/%06d.png");
-    for (int i = 0; i < poses.size(); i++) {
-        cv::Mat orig_image = cv::imread((fmt % (i + 0)).str(), 0);
-//        cout << i << "orig image rows: " << orig_image.rows << " orig image cols: " << orig_image.cols << endl;
-        cv::Mat image;
-        cv::resize(orig_image, image, cv::Size(1224, 368));
-        images.push_back(image);
-//        cout << i << "image rows: " << images[i].rows << " image cols: " << images[i].cols << endl;
-    }
 
 #if 1
     // build optimization problem
@@ -203,7 +156,7 @@ int main(int argc, char **argv)
     int a = 1;
     for (int host_id : host) {
         for (Vec3d p : points[host_id]) {
-            Landmark *landmark = new Landmark(host_id, affLLa[host_id], affLLb[host_id]);
+            Landmark *landmark = new Landmark();
             landmark->setId(a++);
             landmark->setEstimate(p);
             landmark->setMarginalized(true);
@@ -214,43 +167,16 @@ int main(int argc, char **argv)
     }
     std::cout << "5....." << std::endl;
 
-    vector<Cam *> cams;
-    for (int i = 0; i < poses.size(); i++) {
-        Cam *cam = new Cam(i, images[i], affLLa[i], affLLb[i]);
-
-        cam->setId(a++);
+    vector<Pose *> poses;
+    for (int i = 0; i < cams.size(); i++) {
+        Pose *pose = new Pose();
+        pose->setId(a++);
 //        assert(v_s->getId() == i + points_num + 10);
         //! 这里应该错了，应该是Tcw而不是Twc
-        cam->setEstimate(poses[i].inverse());
-        optimizer.addVertex(cam);
-        cams.push_back(cam);
+        pose->setEstimate(cams[i].inverse());
+        optimizer.addVertex(pose);
+        poses.push_back(pose);
     }
-#if 0
-    for (int host_id : host) {
-        for (int j = 0; j < points[host_id].size(); j++) {
-            /*
-            Vec3d pc = (poses[host_id].inverse()) * points[host_id][j];
-            pc /= pc[2];
-            double u = pc[0] * fx + cx;
-            double v = pc[1] * fy + cy;
-            if (u - 2 < 0 || u + 1 >= images[host_id].cols || v - 2 < 0 || v + 1 >= images[host_id].rows) {
-//            if (u - 4 < 0 || u + 2 >= images[host_id].cols || v - 4 < 0 || v + 2 >= images[host_id].rows) {
-                std::cout << "error!!!!!!!!!!!!" << std::endl;
-            }
-             */
-            Vec16d tmp;
-            tmp = cams[host_id]->GetPixelValue(points[host_id][j]);
-                    /*
-            int k = 0;
-            for (int x = -2; x <= 1; x++)
-                for (int y = -2; y <= 1; y++)
-                    tmp[k++] = GetPixelValue(images[host_id], u + x, v + y);
-                     */
-            color16[host_id].push_back(tmp);
-        }
-    }
-#endif
-
     std::cout << "6....." << std::endl;
     // 每条边赋值一个color作为观测值，一个观测一条边，总共poses * points条边.
     //! 这里是稠密图了
@@ -261,37 +187,22 @@ int main(int argc, char **argv)
 //            points[host_id]
 //            poses[host_id]....poses[marg_id]
         for (Landmark *land : landmarks[host_id]) {
-#ifdef DIRECT_METHOD
-            Vec16d measure = cams[host_id]->GetPixelValue(land->estimate());
-#endif
             for (int i = host_id; i < marg_id; i++) {
-#ifndef DIRECT_METHOD
-                Vec2d measure = cams[i]->GetPixelValue(land->estimate());
+                Vec2d measure = poses[i]->GetPixelValue(land->estimate());
                 if (measure[0] < 10)
                     continue;
                 if (measure[1] < 10)
                     continue;
-                if (measure[0] >= images[i].cols - 10)
+                if (measure[0] >= 1224 - 10)
                     continue;
-                if (measure[1] >= images[i].rows - 10)
+                if (measure[1] >= 368 - 10)
                     continue;
-#endif
                 //! 按j计数point，i为j对应的s的id和marginalizeAt（也可以
                 EdgeDirectProjection *edge = new EdgeDirectProjection(/*images[i]*/);
-                edge->setVertex(0, cams[i]); //! 投影的面从host_id....marg_id
+                edge->setVertex(0, poses[i]); //! 投影的面从host_id....marg_id
                 edge->setVertex(1, land); //! 投影的点为所有的vp[host_id]
-#ifdef DIRECT_METHOD
-                edge->set_ab();
-#endif
                 edge->setMeasurement(measure);
-//                edge->setMeasurement(color16[host_id][j]);
-//                edge->setMeasurement(color[host_id][j]);
-//                edge->setInformation(Eigen::Matrix<double, 8, 8>::Identity());
-#ifdef DIRECT_METHOD
-                edge->setInformation(Eigen::Matrix<double, 16, 16>::Identity());
-#else
                 edge->setInformation(Eigen::Matrix<double, 2, 2>::Identity());
-#endif
                 edge->setRobustKernel(new g2o::RobustKernelHuber());
                 optimizer.addEdge(edge);
 //                break;
@@ -302,17 +213,17 @@ int main(int argc, char **argv)
 
     /// 接下来还有一个很重要的步骤，就是将从DSO取得的poses, points加上噪声，制作poses_noisy, points_noisy
     /// 作为优化器的输入。优化在功能上也就是滤波降噪。
-    VecSE3d poses_noisy;
+    VecSE3d cams_noisy;
     VecVec3d points_noisy[100 * 100];
-    for (Sophus::SE3d &pose : poses)
-        poses_noisy.push_back(AddNoiseinPose(pose));
+    for (Sophus::SE3d cam : cams)
+        cams_noisy.push_back(AddNoiseinPose(cam));
     for (int host_id : host) {
         for (Vec3d &pt: points[host_id])
             points_noisy[host_id].push_back(AddNoiseinPoint(pt));
     }
 
-    for (int i = 0; i < poses_noisy.size(); i++)
-        cams[i]->setEstimate(poses_noisy[i].inverse());
+    for (int i = 0; i < cams_noisy.size(); i++)
+        poses[i]->setEstimate(cams_noisy[i].inverse());
 
     for (int host_id : host) {
         for (int i = 0; i < landmarks[host_id].size(); i++)
@@ -321,7 +232,7 @@ int main(int argc, char **argv)
 
     std::cout << "7....." << std::endl;
     // perform optimization
-    Draw(string("before"), poses_noisy, points_noisy, host);
+    Draw(string("before"), cams_noisy, points_noisy, host);
     optimizer.initializeOptimization(0);
     optimizer.optimize(20);
 //    optimizer.optimize(0);
@@ -329,7 +240,7 @@ int main(int argc, char **argv)
     // TODO fetch data from the optimizer
     // START YOUR CODE HERE
     for (int i = 0; i < poses.size(); i++)
-        poses[i] = cams[i]->estimate().inverse();
+        cams[i] = poses[i]->estimate().inverse();
     for (int host_id : host) {
         for (int j = 0; j < points[host_id].size(); j++)
             points[host_id][j] = landmarks[host_id][j]->estimate();
@@ -338,7 +249,7 @@ int main(int argc, char **argv)
 //    cout << "outlier: " << g_outlier << endl;
     // plot the optimized points and poses
 #endif
-    Draw(string("after"), poses, points, host);
-    printResult(string("/mnt/data/dso-4-reading/gpba_result.txt"), poses);
+    Draw(string("after"), cams, points, host);
+    printResult(string("/mnt/data/dso-4-reading/gpba_result.txt"), cams);
     return 0;
 }

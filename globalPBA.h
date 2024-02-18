@@ -49,21 +49,14 @@ extern float fx, fy, cx, cy;
 //class Landmark : public g2o::BaseVertex<3, Vec3d>;
 //class EdgeDirectProjection : public g2o::BaseBinaryEdge<16, Vec16d, Cam, Landmark>;
 // g2o vertex that use sophus::SE3d as pose
-class Cam : public g2o::BaseVertex<6, Sophus::SE3d> {
+class Pose : public g2o::BaseVertex<6, Sophus::SE3d> {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    Cam(int host_id, cv::Mat &target, double a, double b)
+    Pose()
     {
-        _host_id = host_id;
-        _aff_a = a;
-        _aff_b = b;
-        targetImg = target;
+//        targetImg = target;
     }
-    ~Cam() {}
-
-    inline int get_host_id() { return _host_id; }
-    inline double get_a() { return _aff_a; }
-    inline double get_b() { return _aff_b; }
+    ~Pose() {}
 
     bool read(std::istream &is) {}
     bool write(std::ostream &os) const {}
@@ -83,26 +76,6 @@ public:
     /// project得到u, v
     /// 一个相机观测一个路标点，得到观测值：
     /// new cam->GetPixelValue(landmark->estimate()) -> Vec16d
-#ifdef DIRECT_METHOD
-    Vec16d GetPixelValue(Vec3d point)
-    {
-        double u, v;
-        Vec16d ret;
-        _project(point, u, v);
-
-        if (u < 0.0 || v < 0.0)
-            return Vec16d::Zero();
-        int k = 0;
-        //! [-2, 1] X [-2, 1]，总共16个点
-        for (int i = -2; i <= 1; i++)
-            for (int j = -2; j <= 1; j++) {
-                //! _measurement是老图里的色彩，根据灰度一致假设赋为该路标在新的路标坐标和相机位姿下的投影估计值
-                ret[k] = _GetPixelValue(u + i, v + j);
-                k++;
-            }
-        return ret;
-    }
-#else
     Vec2d GetPixelValue(Vec3d point)
     {
         double u, v;
@@ -110,27 +83,9 @@ public:
         _project(point, u, v);
         return Vec2d(u, v);
     }
-#endif
 private:
-    int _host_id;
-    double _aff_a;
-    double _aff_b;
-//    double _fx, _fy, _cx, _cy;
     cv::Mat targetImg;  // the target image
 // bilinear interpolation
-#ifdef DIRECT_METHOD
-    inline float _GetPixelValue(float x, float y) {
-        uchar *data = &(this->targetImg.data[int(y) * this->targetImg.step + int(x)]);
-        float xx = x - floor(x);
-        float yy = y - floor(y);
-        return float(
-                (1 - xx) * (1 - yy) * data[0] +
-                xx * (1 - yy) * data[1] +
-                (1 - xx) * yy * data[this->targetImg.step] +
-                xx * yy * data[this->targetImg.step + 1]
-        );
-    }
-#endif
     inline void _project(Vec3d &point, double &u, double &v)
     {
         //! v0里保存的似乎是Tcw，但是从poses读进来的应该是Twc
@@ -140,25 +95,6 @@ private:
         pc /= pc[2];
         u = pc[0] * fx + cx;
         v = pc[1] * fy + cy;
-
-//        if (u < 0)
-//            u = 0;
-//        if (v < 0)
-//            v = 0;
-
-#ifdef DIRECT_METHOD
-        // 如果变为outlier点，则使用临近的边界值（即不好不坏)
-        if (u - 2 < 0)
-            u = -1;
-        if (u + 1 >= this->targetImg.cols)
-//            u = this->targetImg.cols - 2;
-            u = -1;
-        if (v - 2 < 0)
-            v = -1;
-        if (v + 1 >= this->targetImg.rows)
-//            v = this->targetImg.rows - 2;
-            v = -1;
-#endif
 //        cout << "rectified " << "u " << u << " v " << v <<endl;
     }
 };
@@ -167,17 +103,8 @@ class Landmark : public g2o::BaseVertex<3, Vec3d> {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
-    Landmark(int host_id, double a, double b)
-    {
-        _host_id = host_id;
-        _aff_a = a;
-        _aff_b = b;
-    }
+    Landmark() {}
     ~Landmark() {}
-
-    inline int get_host_id() { return _host_id; }
-    inline double get_a() { return _aff_a; }
-    inline double get_b() { return _aff_b; }
 
     virtual void setToOriginImpl() override {
         _estimate = Vec3d(0, 0, 0);
@@ -190,9 +117,6 @@ public:
     virtual bool read(std::istream &in) {}
     virtual bool write(std::ostream &out) const {}
 private:
-    int _host_id;
-    double _aff_a;
-    double _aff_b;
 };
 //long long g_outlier = 0;
 // TODO edge of projection error, implement it
@@ -200,11 +124,8 @@ private:
 // 跟特征法主要是在这个error的计算里有区别。
 // 同时，应该归属于VertexPoint的color，和
 
-#ifdef DIRECT_METHOD
-class EdgeDirectProjection : public g2o::BaseBinaryEdge<16, Vec16d, Cam, Landmark> {
-#else
-class EdgeDirectProjection : public g2o::BaseBinaryEdge<2, Vec2d, Cam, Landmark> {
-#endif
+
+class EdgeDirectProjection : public g2o::BaseBinaryEdge<2, Vec2d, Pose, Landmark> {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
@@ -212,16 +133,6 @@ public:
     EdgeDirectProjection() {}
     ~EdgeDirectProjection() {}
 
-#ifdef DIRECT_METHOD
-    void set_ab()
-    {
-        auto cam = (Cam *) _vertices[0];
-        auto landmark = (Landmark *) _vertices[1];
-        //! host_id target_id同一个也不要紧
-        this->_a = exp(cam->get_a() - landmark->get_a());
-        this->_b = cam->get_b() - _a * landmark->get_b();
-    }
-#endif
     // _error = _measurement - f(v -> _estimate)
     //! computeError获取一条边的两个顶点，一个顶点是投影面，即target，一个顶点是路标点
     //! 投影面需要保存aff_g2l_t，一张修正了大小的img，位姿
@@ -229,17 +140,11 @@ public:
     virtual void computeError() override {
         // TODO START YOUR CODE HERE
         // compute projection error ...
-        auto cam = (Cam *) _vertices[0];
+        auto pose = (Pose *) _vertices[0];
         auto landmark = (Landmark *) _vertices[1];
         /// project得到u, v
         /// 一个相机观测一个路标点，得到观测值：
-#ifdef DIRECT_METHOD
-        /// new cam->GetPixelValue(landmark->estimate()) -> Vec16d
-        Vec16d b_ = _b * Vec16d::Identity();
-        _error = cam->GetPixelValue(landmark->estimate()) - (_a * _measurement + b_);
-#else
-        _error = cam->GetPixelValue(landmark->estimate()) - _measurement;
-#endif
+        _error = pose->GetPixelValue(landmark->estimate()) - _measurement;
         // TODO END YOUR CODE HERE
     }
     // Let g2o compute jacobian for you
@@ -250,13 +155,13 @@ public:
     //! 线性化直和
     virtual void linearizeOplus() override {
         //! 有两种顶点，一个是位姿+内参，一个是点（三维坐标）
-        auto cam = (Cam *) _vertices[0];
+        auto pose = (Pose *) _vertices[0];
         auto landmark = (Landmark *) _vertices[1];
-        auto pose_est = cam->estimate();
+        auto cam_est = pose->estimate();
         auto P= landmark->estimate();
 
-        Sophus::SO3d R = pose_est.so3().cast<double>();
-        Vec3d t = pose_est.translation();
+        Sophus::SO3d R = cam_est.so3().cast<double>();
+        Vec3d t = cam_est.translation();
 
         // 生成估计值T处的扰动{\delta}{\xi}的雅克比
         Vec3d Pc = R * P + t;
@@ -272,8 +177,6 @@ public:
         double Zc2 = Zc * Zc;
         double Xc2 = Xc * Xc;
         double Yc2 = Yc * Yc;
-
-        double r2 = (Xc * Xc + Yc * Yc + Zc * Zc) / (Zc * Zc);
 
         Eigen::Matrix<double, 2, 3> E1;
         Eigen::Matrix<double, 2, 6> E2;
