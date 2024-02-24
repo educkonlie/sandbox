@@ -1,4 +1,4 @@
-#include "globalPBA.h"
+#include "new_method_BA.h"
 
 //! 关于术语使用
 //! 输入输出使用 camera point  表明是纯数值
@@ -8,43 +8,16 @@
 std::string camera_file = "/mnt/data/dso-4-reading/result.txt";
 std::string point_file = "/mnt/data/dso-4-reading/point_cloud.txt";
 
-/*
-        dx 0 dy -2
-        dx -1 dy -1
-        dx 1 dy -1
-        dx -2 dy 0
-        dx 0 dy 0
-        dx 2 dy 0
-        dx -1 dy 1
-        dx 0 dy 2
-*/
-int pattern_dx[8] = {0, -1, 1, -2, 0, 2, -1, 0};
-int pattern_dy[8] = {-2, -1, -1, 0, 0, 0, 1, 2};
-
-// intrinsics
-//float fx = 277.34;
-//float fy = 291.402;
-//float cx = 312.234;
-//float cy = 239.777;
-
-//float fx = 706.01;
-//float fy = 703.522;
-//float cx = 600.911;
-//float cy = 182.127;
-
 float fx = 705.919;
 float fy = 703.522;
 float cx = 600.928;
 float cy = 182.121;
-//float fx = 700.0;
-//float fy = 700.0;
-//float cx = 0.0;
-//float cy = 0.0;
 
 // plot the cams and points for you, need pangolin
 void Draw(std::string title, const VecSE3d &cams, const VecVec3d points[], const vector<int > &host);
 void printResult(std::string file, const VecSE3d &cams);
 
+//! 先基于g2o的改造成自己的Pose和Landmark，并且测试一下计算residual和energy和jacobi是否正确
 int main(int argc, char **argv)
 {
     // read poses and points
@@ -153,13 +126,18 @@ int main(int argc, char **argv)
     //! 按host循环
     // 一个路标一个顶点，一个位姿也是一个顶点。
     vector<Landmark *> landmarks[100 * 100]; // 最多100 * 100个host
+    vector<myLandmark *> mylandmarks[100 * 100];
     int a = 1;
     for (int host_id : host) {
         for (Vec3d p : points[host_id]) {
             Landmark *landmark = new Landmark();
+            myLandmark *mylandmark = new myLandmark();
             landmark->setId(a++);
+//            mylandmark
             landmark->setEstimate(p);
+            mylandmark->setEstimate(p);
             landmark->setMarginalized(true);
+            // mylandmark
 
             optimizer.addVertex(landmark);
             landmarks[host_id].push_back(landmark);
@@ -171,16 +149,22 @@ int main(int argc, char **argv)
     for (int i = 0; i < cams.size(); i++) {
         Pose *pose = new Pose();
         pose->setId(a++);
-//        assert(v_s->getId() == i + points_num + 10);
         //! 这里应该错了，应该是Tcw而不是Twc
         pose->setEstimate(cams[i].inverse());
         optimizer.addVertex(pose);
         poses.push_back(pose);
     }
+
+    vector<myPose *> myposes;
+    for (int i = 0; i < cams.size(); i++) {
+        myPose *mypose = new myPose();
+        mypose->setPoseId(i);
+        /// 要注意是相机到世界还是世界到相机
+        mypose->setEstimate(cams[i].inverse());
+        myposes.push_back(mypose);
+    }
     std::cout << "6....." << std::endl;
-    // 每条边赋值一个color作为观测值，一个观测一条边，总共poses * points条边.
-    //! 这里是稠密图了
-//    int obs = 0;
+
     for (int l = 0; l < host.size(); l++) {
         int host_id = host[l];
         int marg_id = marginalizedAt[l];
@@ -205,6 +189,37 @@ int main(int argc, char **argv)
                 edge->setInformation(Eigen::Matrix<double, 2, 2>::Identity());
                 edge->setRobustKernel(new g2o::RobustKernelHuber());
                 optimizer.addEdge(edge);
+//                break;
+            }
+        }
+    }
+
+    for (int l = 0; l < host.size(); l++) {
+        int host_id = host[l];
+        int marg_id = marginalizedAt[l];
+//            points[host_id]
+//            poses[host_id]....poses[marg_id]
+        for (myLandmark *myland : mylandmarks[host_id]) {
+            for (int i = host_id; i < marg_id; i++) {
+                Vec2d my_measure = myposes[i]->GetPixelValue(myland->estimate());
+                if (my_measure[0] < 10)
+                    continue;
+                if (my_measure[1] < 10)
+                    continue;
+                if (my_measure[0] >= 1224 - 10)
+                    continue;
+                if (my_measure[1] >= 368 - 10)
+                    continue;
+                //! 按j计数point，i为j对应的s的id和marginalizeAt（也可以
+                myEdge *myedge = new myEdge();
+                myedge->setPose(myposes[i]); //! 投影的面从host_id....marg_id
+                myedge->setLandmark(myland); //! 投影的点为所有的vp[host_id]
+                myedge->setMeasurement(my_measure);
+//                myedge->setInformation(Eigen::Matrix<double, 2, 2>::Identity());
+
+                // myoptimizer.addEdge(myedge);
+//                myedge->setRobustKernel(new g2o::RobustKernelHuber());
+//                optimizer.addEdge(edge);
 //                break;
             }
         }
@@ -234,7 +249,7 @@ int main(int argc, char **argv)
     // perform optimization
     Draw(string("before"), cams_noisy, points_noisy, host);
     optimizer.initializeOptimization(0);
-    optimizer.optimize(10);
+    optimizer.optimize(20);
 //    optimizer.optimize(0);
 
     // TODO fetch data from the optimizer

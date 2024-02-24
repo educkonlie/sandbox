@@ -25,6 +25,10 @@
 
 //#define DIRECT_METHOD
 
+#define POSE_SIZE 6
+#define LAND_SIZE 3
+#define RESIDUAL_SIZE 2
+
 typedef std::vector<Sophus::SE3d, Eigen::aligned_allocator<Sophus::SE3d>> VecSE3d;
 typedef std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> VecVec3d;
 typedef Eigen::Matrix<double,2,1> Vec2d;
@@ -32,10 +36,14 @@ typedef Eigen::Matrix<double,3,1> Vec3d;
 typedef Eigen::Matrix<double, 3, 3> Mat33d;
 typedef Eigen::Matrix<double,16,1> Vec16d;
 typedef Eigen::Matrix<double,8,1> Vec8d;
+typedef Eigen::Matrix<double,2,6> Mat26d;
+typedef Eigen::Matrix<double,2,3> Mat23d;
 
 typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> MatXXdr;
 typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor> MatXXd;
 typedef Eigen::Matrix<double, Eigen::Dynamic, 1> VecXd;
+
+//typedef Eigen::Matrix<double, R, C> MatRCd;
 
 typedef Eigen::Map<Eigen::VectorXd> VectorRef;
 
@@ -153,57 +161,7 @@ public:
 // 参照slambook14 page 186-187，但是有两个区别，这里还多了畸变模型，并且归一化平面为负，所以还是需要重新推导一下
     // 畸变模型在page 102
     //! 线性化直和
-    virtual void linearizeOplus() override {
-        //! 有两种顶点，一个是位姿+内参，一个是点（三维坐标）
-        auto pose = (Pose *) _vertices[0];
-        auto landmark = (Landmark *) _vertices[1];
-        auto cam_est = pose->estimate();
-        auto P= landmark->estimate();
-
-        Sophus::SO3d R = cam_est.so3().cast<double>();
-        Vec3d t = cam_est.translation();
-
-        // 生成估计值T处的扰动{\delta}{\xi}的雅克比
-        Vec3d Pc = R * P + t;
-//        Vec3d Pcc = pose_est * P;
-//        std::cout << Pc.transpose() << std::endl;
-//        std::cout << Pcc.transpose() << std::endl;
-//        exit(0);
-
-        double Xc = Pc[0];
-        double Yc = Pc[1];
-        double Zc = Pc[2];
-
-        double Zc2 = Zc * Zc;
-        double Xc2 = Xc * Xc;
-        double Yc2 = Yc * Yc;
-
-        Eigen::Matrix<double, 2, 3> E1;
-        Eigen::Matrix<double, 2, 6> E2;
-        // row 0
-        E1(0, 0) = fx / Zc;  E1(0, 1) = 0;           E1(0, 2) = -fx * Xc / Zc2;
-        // row 1
-        E1(1, 0) = 0;        E1(1, 1) = fy / Zc;     E1(1, 2) = -fy * Yc / Zc2;
-
-        E2.block(0, 0, 2, 3) = E1;
-
-        E2(0, 3) = -fx * Xc * Yc / Zc2;
-        E2(0, 4) = fx + fx * Xc2 / Zc2;
-        E2(0, 5) = -fx * Yc / Zc;
-
-        E2(1, 3) = -fy - fy * Yc2 / Zc2;
-        E2(1, 4) = fy * Xc * Yc / Zc2;
-        E2(1, 5) = fy * Xc / Zc;
-
-//!   2 × 6
-//        _jacobianOplusXi << E, E * (-Sophus::SO3d::hat(R * P).matrix());
-        _jacobianOplusXi = E2;
-//      生成三维点point的雅克比
-//!   2 × 3
-        _jacobianOplusXj = E1 * (R.matrix());
-//        cout << "Xi " << _jacobianOplusXi << endl;
-//        cout << "Xj " << _jacobianOplusXj << endl;
-    }
+    virtual void linearizeOplus() override;
 #endif
     virtual bool read(std::istream &in) {}
     virtual bool write(std::ostream &out) const {}
