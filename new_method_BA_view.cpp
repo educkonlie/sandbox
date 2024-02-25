@@ -2,7 +2,7 @@
 // Created by ruankefeng on 24-2-6.
 //
 // used for test for new_method_BA
-
+#if 0
 #include "new_method_BA.h"
 #include <random>
 
@@ -49,3 +49,4 @@ int main()
     }*/
     return 0;
 }
+#endif

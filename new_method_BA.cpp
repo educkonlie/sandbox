@@ -1,58 +1,6 @@
 #include "new_method_BA.h"
 #include <random>
 
-#if 0
-Sophus::SE3d AddNoiseinPose(Sophus::SE3d &pose)
-{
-#ifdef DIRECT_METHOD
-    static std::normal_distribution<double> pose_rotation_noise(0., 0.001);
-    static std::normal_distribution<double> pose_position_noise(0., 0.001);
-#else
-    static std::normal_distribution<double> pose_rotation_noise(0., 0.01);
-    static std::normal_distribution<double> pose_position_noise(0., 0.01);
-#endif
-    static std::default_random_engine generator;
-//    for (size_t i = 0; i < poses.size(); ++i) {
-        // 给相机位置和姿态初值增加噪声
-        Mat33d noise_R, noise_X, noise_Y, noise_Z;
-        noise_X = Eigen::AngleAxis<double>(pose_rotation_noise(generator),
-                                           Vec3d::UnitX());
-        noise_Y = Eigen::AngleAxis<double>(pose_rotation_noise(generator),
-                                           Vec3d::UnitY());
-        noise_Z = Eigen::AngleAxis<double>(pose_rotation_noise(generator),
-                                           Vec3d::UnitZ());
-        noise_R = noise_X * noise_Y * noise_Z;
-        Vec3d noise_t(pose_position_noise(generator),
-                      pose_position_noise(generator),
-                      pose_position_noise(generator));
-//        rootBA::Quaternion<Scalar> noise_q_wc(noise_R);
-//        assert(i >= 2);
-//        if (i < 2) {
-//            noise_t.setZero();
-//            noise_q_wc.setIdentity();
-//        }
-    return Sophus::SE3d(noise_R, noise_t) * pose;
-//        poses_noisy.push_back(Sophus::SE3d(noise_R, noise_t) * poses[i]);
-//        cameras[i].setNoise(noise_t, noise_q_wc);
-//    }
-}
-Vec3d AddNoiseinPoint(Vec3d &point)
-{
-    static std::default_random_engine generator;
-#ifdef DIRECT_METHOD
-    static std::normal_distribution<double> landmark_position_noise(0., 0.02);
-#else
-    static std::normal_distribution<double> landmark_position_noise(0., 0.2);
-#endif
-//    static std::normal_distribution<double> landmark_position_noise(0., 0.0);
-// 为初值添加随机噪声
-    Vec3d noise(landmark_position_noise(generator),
-                    landmark_position_noise(generator),
-                    landmark_position_noise(generator));
-    return point + noise;
-}
-#endif
-
 void myEdge::computeResidual(VecXd &r) {
     // _error = _measurement - f(v -> _estimate)
     // compute projection error ...
@@ -60,6 +8,9 @@ void myEdge::computeResidual(VecXd &r) {
     /// 一个相机观测一个路标点，得到观测值：
 //    _r = _pose->GetPixelValue(_landmark->estimate()) - _measurement;
     r = _pose->GetPixelValue(_landmark->estimate()) - _measurement;
+//    std::cout << "GetPixelValue: " << (_pose->GetPixelValue(_landmark->estimate())).transpose() << std::endl;
+//    std::cout << "_measurement: " << _measurement.transpose() << std::endl;
+//    std::cout << "r inside " << r.transpose() << std::endl;
 }
 
 // Let g2o compute jacobian for you
@@ -110,6 +61,44 @@ void myEdge::linearizeOplus(MatXXd &Jp, MatXXd &Jl) {
     Jl = E1 * (R.matrix());
 }
 
+void qr3(MatXXd &Jp, MatXXd &Jl, VecXd &Jr) {
+    MatXXd temp1, temp2;
+    VecXd temp3;
+    int nres = Jl.rows();
+    int cols = Jl.cols();
+    assert(nres > 3);
+    // i: row
+    // j: col
+    for (int j = 0; j < cols; j++) {
+        double pivot = Jl(j, j);
+        for (int i = j + 1; i < nres; i++) {
+            if (std::abs(Jl(i, j)) < 1e-10)
+                continue;
+            double a = Jl(i, j);
+            double r = sqrt(pivot * pivot + a * a);
+            double c = pivot / r;
+            double s = a / r;
+            pivot = r;
+            assert(std::isfinite(r));
+            assert(std::abs(r) > 1e-10);
+// 变0的，先到temp
+            temp1 = -s * Jp.row(j) + c * Jp.row(i);
+            temp2 = -s * Jl.row(j) + c * Jl.row(i);
+            temp3 = -s * Jr.row(j) + c * Jr.row(i);
+// 变大的.  j是pivot，在上面，i在下面
+            Jp.row(j) = c * Jp.row(j) + s * Jp.row(i);
+            Jl.row(j) = c * Jl.row(j) + s * Jl.row(i);
+            Jr.row(j) = c * Jr.row(j) + s * Jr.row(i);
+// 变0的, temp => i
+            Jp.row(i) = temp1;
+            Jl.row(i) = temp2;
+            Jr.row(i) = temp3;
+
+            Jl(j, j) = pivot = r;
+            Jl(i, j) = 0;
+        }
+    }
+}
 /// 对于该点下面的所有边，计算Jp Jl r
 void myOptimizer::_linearize_one_landmark(myLandmark *l) {
     MatXXd Jp;
@@ -125,6 +114,7 @@ void myOptimizer::_linearize_one_landmark(myLandmark *l) {
     for (int i = 0; i < l->edges.size(); i++) {
         auto edge = l->edges[i];
         edge->computeResidual(r);
+//        std::cout << "r outside: " << r.transpose() << std::endl;
         edge->linearizeOplus(Jp, Jl);
         l->Jp.block(i * 2, i * 6, 2, 6) = Jp;
         l->Jl.block(i * 2, 0, 2, 3) = Jl;
@@ -132,13 +122,25 @@ void myOptimizer::_linearize_one_landmark(myLandmark *l) {
     }
 
     /// 计算单路标的残差能量
-    l->energy = r.norm();
+    l->energy = (l->r).transpose() * (l->r);
+//    std::cout << "l->energy " << l->energy << std::endl;
     /// 保存未边缘化的Jp Jl r用于回代求解delta_landmark
     l->orig_Jp = l->Jp;
     l->orig_Jl = l->Jl;
     l->orig_r  = l->r;
 
-    //qr(l->Jp, l->Jl, l->r);
+    assert(l->Jp.rows() > LAND_SIZE);
+
+    qr3(l->Jp, l->Jl, l->r);
+//    std::cout << "Jp before:\n" << l->Jp << std::endl;
+    if (l->Jp.rows() <= LAND_SIZE) {
+        l->Jp = MatXXd::Zero(0, 0);
+        l->r = VecXd::Zero(0);
+    } else {
+        l->Jp = l->Jp.bottomRows(l->Jp.rows() - LAND_SIZE);
+//        std::cout << "Jp after:\n" << l->Jp << std::endl;
+        l->r = l->r.bottomRows(l->r.rows() - LAND_SIZE);
+    }
     // to
 }
 
@@ -152,31 +154,71 @@ void myOptimizer::_linearize_one_landmark(myLandmark *l) {
 //SparseMatrixType mat(rows,cols);
 //mat.setFromTriplets(tripletList.begin(), tripletList.end());
 // mat is ready to go!
+/*
 void myOptimizer::_toSparseMatrix(int startRow, int startCol,
-                    MatXXd &blk) {
-    std::vector<Eigen::Triplet<double> > tripletList;
-    for (int i = 0; i < blk.rows(); i++)
-        for (int j = 0; j < blk.cols(); j++)
-            tripletList.push_back(T(startRow + i, startCol + j, blk(i, j)));
-    this->_big_J.setFromTriplets(tripletList.begin(), tripletList.end());
+                    MatXXd *blk) {
+//    std::vector<T > tripletList;
+    for (int i = 0; i < (*blk).rows(); i++)
+        for (int j = 0; j < (*blk).cols(); j++)
+            _tripletList.push_back(T(startRow + i, startCol + j, (*blk)(i, j)));
 }
+*/
 double myOptimizer::_compose1() {
     int startRow, startCol;
     startRow = startCol = 0;
     double energy = 0.0;
+
     for (auto l : _allLandmarks) {
-        assert(l->Jp.rows() > LAND_SIZE);
+        assert(l);
+        assert(l->edges);
+
+//        _tripletList.clear();
+//        assert(l->Jp.rows() > LAND_SIZE);
+        if (l->Jp.rows() == 0)
+            continue;
 //        l->Jp = l->Jp.bottomRows(l->Jp.rows() - LAND_SIZE);
+//        for (int i = 0; i < l->edges.size(); i++) {
+//            std::cout << "host:\n" << i << " " << l->edges[i]->getPose()->pose_id << std::endl;
+//        }
+//        std::cout << "Jp:\n" << l->Jp << std::endl;
+//        std::cout << "Jl:\n" << l->Jl << std::endl;
         for (int i = 0; i < l->edges.size(); i++) {
+//            std::cout << "......" << i << std::endl;
             startCol = l->edges[i]->getPose()->pose_id * POSE_SIZE;
+//            _toSparseMatrix(startRow, startCol,
+//                            l->Jp.block(LAND_SIZE, i * POSE_SIZE,
+//                                        l->Jp.rows() - LAND_SIZE, POSE_SIZE));
+/*
             _toSparseMatrix(startRow, startCol,
-                            l->Jp.block(LAND_SIZE, i * POSE_SIZE,
-                                        l->Jp.rows() - LAND_SIZE, POSE_SIZE))
+                            l->Jp.middleCols(i * POSE_SIZE, POSE_SIZE));
+*/
+
+//            MatXXd blk = l->Jp.middleCols(i * POSE_SIZE, POSE_SIZE));
+
+//            std::cout << "startCol: " << startCol << std::endl;
+//            std::cout << "startRow: " << startRow << std::endl;
+            MatXXd blk = l->Jp.middleCols(i * POSE_SIZE, POSE_SIZE);
+//            MatXXd blk = l->Jp.block(LAND_SIZE, i * POSE_SIZE,
+//                                     l->Jp.rows() - LAND_SIZE, POSE_SIZE);
+//            std::cout << "blk rows: " << blk.rows() << std::endl;
+//            std::cout << "blk cols: " << blk.cols() << std::endl;
+            {
+                for (int m = 0; m < blk.rows(); m++)
+                    for (int n = 0; n < blk.cols(); n++)
+//                        _tripletList.push_back(T(startRow + m, startCol + n, blk(m, n)));
+                        this->_big_J.insert(startRow + m, startCol + n) = blk(m, n);
+            }
         }
+//        std::cout << "done........" << std::endl;
+//        std::cout << "big_J: row col: " << _big_J.rows() << " " << _big_J.cols() << std::endl;
+
+//        this->_big_J.setFromTriplets(_tripletList.begin(), _tripletList.end());
         this->_big_r.middleRows(startRow, l->r.rows()) = l->r;
         energy += l->energy;
-        startRow += l->Jp.rows() - LAND_SIZE;
+        startRow += l->Jp.rows() /*- LAND_SIZE*/;
     }
+    std::cout << "all done........" << energy << std::endl;
+    return energy;
 }
 void myOptimizer::_compute1(VecXd &dx) {
     Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrix<double> > lscg;

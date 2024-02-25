@@ -46,6 +46,7 @@ typedef Eigen::Matrix<double, Eigen::Dynamic, 1> VecXd;
 //typedef Eigen::Matrix<double, R, C> MatRCd;
 
 typedef Eigen::Map<Eigen::VectorXd> VectorRef;
+typedef Eigen::Triplet<double> T;
 
 using namespace std;
 

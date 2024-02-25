@@ -119,6 +119,8 @@ int main(int argc, char **argv)
     optimizer.setAlgorithm(solver);   // 设置求解器
     optimizer.setVerbose(true);       // 打开调试输出
 
+    myOptimizer *my_optimizer = new myOptimizer();
+
     std::cout << "4....." << std::endl;
 
     // TODO add vertices, edges into the graph optimizer
@@ -126,21 +128,25 @@ int main(int argc, char **argv)
     //! 按host循环
     // 一个路标一个顶点，一个位姿也是一个顶点。
     vector<Landmark *> landmarks[100 * 100]; // 最多100 * 100个host
-    vector<myLandmark *> mylandmarks[100 * 100];
     int a = 1;
     for (int host_id : host) {
         for (Vec3d p : points[host_id]) {
             Landmark *landmark = new Landmark();
-            myLandmark *mylandmark = new myLandmark();
             landmark->setId(a++);
-//            mylandmark
             landmark->setEstimate(p);
-            mylandmark->setEstimate(p);
             landmark->setMarginalized(true);
-            // mylandmark
-
             optimizer.addVertex(landmark);
             landmarks[host_id].push_back(landmark);
+        }
+    }
+
+    vector<myLandmark *> mylandmarks[100 * 100];
+    for (int host_id : host) {
+        for (Vec3d p : points[host_id]) {
+            myLandmark *mylandmark = new myLandmark();
+            mylandmark->setEstimate(p);
+            my_optimizer->addLandmark(mylandmark);
+            mylandmarks[host_id].push_back(mylandmark);
         }
     }
     std::cout << "5....." << std::endl;
@@ -161,6 +167,7 @@ int main(int argc, char **argv)
         mypose->setPoseId(i);
         /// 要注意是相机到世界还是世界到相机
         mypose->setEstimate(cams[i].inverse());
+        my_optimizer->addPose(mypose);
         myposes.push_back(mypose);
     }
     std::cout << "6....." << std::endl;
@@ -215,9 +222,12 @@ int main(int argc, char **argv)
                 myedge->setPose(myposes[i]); //! 投影的面从host_id....marg_id
                 myedge->setLandmark(myland); //! 投影的点为所有的vp[host_id]
                 myedge->setMeasurement(my_measure);
+
+                myland->addEdge(myedge);
+
 //                myedge->setInformation(Eigen::Matrix<double, 2, 2>::Identity());
 
-                // myoptimizer.addEdge(myedge);
+//                 my_optimizer->addEdge(myedge);
 //                myedge->setRobustKernel(new g2o::RobustKernelHuber());
 //                optimizer.addEdge(edge);
 //                break;
@@ -245,20 +255,39 @@ int main(int argc, char **argv)
             landmarks[host_id][i]->setEstimate(points_noisy[host_id][i]);
     }
 
+    for (int i = 0; i < cams_noisy.size(); i++)
+        myposes[i]->setEstimate(cams_noisy[i].inverse());
+
+    for (int host_id : host) {
+        for (int i = 0; i < landmarks[host_id].size(); i++)
+            mylandmarks[host_id][i]->setEstimate(points_noisy[host_id][i]);
+    }
+
     std::cout << "7....." << std::endl;
     // perform optimization
     Draw(string("before"), cams_noisy, points_noisy, host);
-    optimizer.initializeOptimization(0);
-    optimizer.optimize(20);
-//    optimizer.optimize(0);
+
+//    optimizer.initializeOptimization(0);
+//    optimizer.optimize(20);
+
+    my_optimizer->optimize(5);
+
+    // TODO fetch data from the optimizer
+    // START YOUR CODE HERE
+//    for (int i = 0; i < poses.size(); i++)
+//        cams[i] = poses[i]->estimate().inverse();
+//    for (int host_id : host) {
+//        for (int j = 0; j < points[host_id].size(); j++)
+//            points[host_id][j] = landmarks[host_id][j]->estimate();
+//    }
 
     // TODO fetch data from the optimizer
     // START YOUR CODE HERE
     for (int i = 0; i < poses.size(); i++)
-        cams[i] = poses[i]->estimate().inverse();
+        cams[i] = myposes[i]->estimate().inverse();
     for (int host_id : host) {
         for (int j = 0; j < points[host_id].size(); j++)
-            points[host_id][j] = landmarks[host_id][j]->estimate();
+            points[host_id][j] = mylandmarks[host_id][j]->estimate();
     }
     // END YOUR CODE HERE
 //    cout << "outlier: " << g_outlier << endl;
