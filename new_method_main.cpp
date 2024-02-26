@@ -101,6 +101,7 @@ int main(int argc, char **argv)
     cout << "observations(edges): " << obs << endl;
 
 #if 1
+#ifdef USE_G2O
     // build optimization problem
 // 构建图优化，先设定g2o
     std::cout << "1....." << std::endl;
@@ -118,14 +119,15 @@ int main(int argc, char **argv)
     g2o::SparseOptimizer optimizer;     // 图模型
     optimizer.setAlgorithm(solver);   // 设置求解器
     optimizer.setVerbose(true);       // 打开调试输出
+#endif
 
     myOptimizer *my_optimizer = new myOptimizer();
 
     std::cout << "4....." << std::endl;
 
-    // TODO add vertices, edges into the graph optimizer
     // START YOUR CODE HERE
     //! 按host循环
+#ifdef USE_G2O
     // 一个路标一个顶点，一个位姿也是一个顶点。
     vector<Landmark *> landmarks[100 * 100]; // 最多100 * 100个host
     int a = 1;
@@ -139,6 +141,7 @@ int main(int argc, char **argv)
             landmarks[host_id].push_back(landmark);
         }
     }
+#endif
 
     vector<myLandmark *> mylandmarks[100 * 100];
     for (int host_id : host) {
@@ -151,6 +154,7 @@ int main(int argc, char **argv)
     }
     std::cout << "5....." << std::endl;
 
+#ifdef USE_G2O
     vector<Pose *> poses;
     for (int i = 0; i < cams.size(); i++) {
         Pose *pose = new Pose();
@@ -160,6 +164,7 @@ int main(int argc, char **argv)
         optimizer.addVertex(pose);
         poses.push_back(pose);
     }
+#endif
 
     vector<myPose *> myposes;
     for (int i = 0; i < cams.size(); i++) {
@@ -172,6 +177,7 @@ int main(int argc, char **argv)
     }
     std::cout << "6....." << std::endl;
 
+#ifdef USE_G2O
     for (int l = 0; l < host.size(); l++) {
         int host_id = host[l];
         int marg_id = marginalizedAt[l];
@@ -200,6 +206,7 @@ int main(int argc, char **argv)
             }
         }
     }
+#endif
 
     for (int l = 0; l < host.size(); l++) {
         int host_id = host[l];
@@ -224,17 +231,11 @@ int main(int argc, char **argv)
                 myedge->setMeasurement(my_measure);
 
                 myland->addEdge(myedge);
-
-//                myedge->setInformation(Eigen::Matrix<double, 2, 2>::Identity());
-
-//                 my_optimizer->addEdge(myedge);
 //                myedge->setRobustKernel(new g2o::RobustKernelHuber());
-//                optimizer.addEdge(edge);
 //                break;
             }
         }
     }
-    // END YOUR CODE HERE
 
     /// 接下来还有一个很重要的步骤，就是将从DSO取得的poses, points加上噪声，制作poses_noisy, points_noisy
     /// 作为优化器的输入。优化在功能上也就是滤波降噪。
@@ -247,6 +248,7 @@ int main(int argc, char **argv)
             points_noisy[host_id].push_back(AddNoiseinPoint(pt));
     }
 
+#ifdef USE_G2O
     for (int i = 0; i < cams_noisy.size(); i++)
         poses[i]->setEstimate(cams_noisy[i].inverse());
 
@@ -254,12 +256,13 @@ int main(int argc, char **argv)
         for (int i = 0; i < landmarks[host_id].size(); i++)
             landmarks[host_id][i]->setEstimate(points_noisy[host_id][i]);
     }
+#endif
 
     for (int i = 0; i < cams_noisy.size(); i++)
         myposes[i]->setEstimate(cams_noisy[i].inverse());
 
     for (int host_id : host) {
-        for (int i = 0; i < landmarks[host_id].size(); i++)
+        for (int i = 0; i < points_noisy[host_id].size(); i++)
             mylandmarks[host_id][i]->setEstimate(points_noisy[host_id][i]);
     }
 
@@ -267,23 +270,25 @@ int main(int argc, char **argv)
     // perform optimization
     Draw(string("before"), cams_noisy, points_noisy, host);
 
-//    optimizer.initializeOptimization(0);
-//    optimizer.optimize(20);
+#ifdef USE_G2O
+    optimizer.initializeOptimization(0);
+    optimizer.optimize(20);
+#endif
 
     my_optimizer->optimize(5);
 
-    // TODO fetch data from the optimizer
-    // START YOUR CODE HERE
-//    for (int i = 0; i < poses.size(); i++)
-//        cams[i] = poses[i]->estimate().inverse();
-//    for (int host_id : host) {
-//        for (int j = 0; j < points[host_id].size(); j++)
-//            points[host_id][j] = landmarks[host_id][j]->estimate();
-//    }
-
-    // TODO fetch data from the optimizer
+#ifdef USE_G2O
     // START YOUR CODE HERE
     for (int i = 0; i < poses.size(); i++)
+        cams[i] = poses[i]->estimate().inverse();
+    for (int host_id : host) {
+        for (int j = 0; j < points[host_id].size(); j++)
+            points[host_id][j] = landmarks[host_id][j]->estimate();
+    }
+#endif
+
+    // START YOUR CODE HERE
+    for (int i = 0; i < cams.size(); i++)
         cams[i] = myposes[i]->estimate().inverse();
     for (int host_id : host) {
         for (int j = 0; j < points[host_id].size(); j++)

@@ -145,6 +145,8 @@ void myOptimizer::_linearize_one_landmark(myLandmark *l) {
 }
 
 /// 将一个landmark对应的所有边的Jp r' (Jl已经被边缘化)放入大的稀疏矩阵J, r
+#define TRIPLET_LIST
+#ifdef TRIPLET_LIST
 //tripletList.reserve(estimation_of_entries);
 //for(...)
 //{
@@ -163,60 +165,47 @@ void myOptimizer::_toSparseMatrix(int startRow, int startCol,
             _tripletList.push_back(T(startRow + i, startCol + j, (*blk)(i, j)));
 }
 */
+#endif
 double myOptimizer::_compose1() {
     int startRow, startCol;
     startRow = startCol = 0;
     double energy = 0.0;
 
+#ifdef TRIPLET_LIST
+    _tripletList.clear();
+#endif
     for (auto l : _allLandmarks) {
         assert(l);
         assert(l->edges);
 
-//        _tripletList.clear();
-//        assert(l->Jp.rows() > LAND_SIZE);
         if (l->Jp.rows() == 0)
             continue;
-//        l->Jp = l->Jp.bottomRows(l->Jp.rows() - LAND_SIZE);
-//        for (int i = 0; i < l->edges.size(); i++) {
-//            std::cout << "host:\n" << i << " " << l->edges[i]->getPose()->pose_id << std::endl;
-//        }
-//        std::cout << "Jp:\n" << l->Jp << std::endl;
-//        std::cout << "Jl:\n" << l->Jl << std::endl;
         for (int i = 0; i < l->edges.size(); i++) {
-//            std::cout << "......" << i << std::endl;
             startCol = l->edges[i]->getPose()->pose_id * POSE_SIZE;
-//            _toSparseMatrix(startRow, startCol,
-//                            l->Jp.block(LAND_SIZE, i * POSE_SIZE,
-//                                        l->Jp.rows() - LAND_SIZE, POSE_SIZE));
-/*
-            _toSparseMatrix(startRow, startCol,
-                            l->Jp.middleCols(i * POSE_SIZE, POSE_SIZE));
-*/
-
-//            MatXXd blk = l->Jp.middleCols(i * POSE_SIZE, POSE_SIZE));
-
 //            std::cout << "startCol: " << startCol << std::endl;
 //            std::cout << "startRow: " << startRow << std::endl;
             MatXXd blk = l->Jp.middleCols(i * POSE_SIZE, POSE_SIZE);
-//            MatXXd blk = l->Jp.block(LAND_SIZE, i * POSE_SIZE,
-//                                     l->Jp.rows() - LAND_SIZE, POSE_SIZE);
 //            std::cout << "blk rows: " << blk.rows() << std::endl;
 //            std::cout << "blk cols: " << blk.cols() << std::endl;
             {
                 for (int m = 0; m < blk.rows(); m++)
                     for (int n = 0; n < blk.cols(); n++)
-//                        _tripletList.push_back(T(startRow + m, startCol + n, blk(m, n)));
+#ifdef TRIPLET_LIST
+                        _tripletList.push_back(T(startRow + m, startCol + n, blk(m, n)));
+#else
                         this->_big_J.insert(startRow + m, startCol + n) = blk(m, n);
+#endif
             }
         }
 //        std::cout << "done........" << std::endl;
 //        std::cout << "big_J: row col: " << _big_J.rows() << " " << _big_J.cols() << std::endl;
-
-//        this->_big_J.setFromTriplets(_tripletList.begin(), _tripletList.end());
         this->_big_r.middleRows(startRow, l->r.rows()) = l->r;
         energy += l->energy;
         startRow += l->Jp.rows() /*- LAND_SIZE*/;
     }
+#ifdef TRIPLET_LIST
+    this->_big_J.setFromTriplets(_tripletList.begin(), _tripletList.end());
+#endif
     std::cout << "all done........" << energy << std::endl;
     return energy;
 }
@@ -226,7 +215,7 @@ void myOptimizer::_compute1(VecXd &dx) {
     lscg.setTolerance(1e-2);
     lscg.compute(_big_J);
     dx = lscg.solve(_big_r);
-    std::cout << "lscg  x:\n" << dx.transpose() << std::endl;
+//    std::cout << "lscg  x:\n" << dx.transpose() << std::endl;
     std::cout << "lscg iter: " << lscg.iterations() << std::endl;
     std::cout << "lscg error: " << lscg.error() << std::endl;
 }

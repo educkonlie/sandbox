@@ -96,7 +96,6 @@ private:
     Vec3d _estimate;
 };
 
-
 /// 优化器的输入是所有的边，每条边经过一次线性化求得两行J，一次computeError得到两行r
 /// rootba应当以landmark作为基本分组单位，一个landmark会带有好几条边，生成一个Jp块，一个Jl块，一列r
 class myOptimizer {
@@ -112,11 +111,6 @@ public:
         _allLandmarks.push_back(l);
     }
 
-    /// 将Jp, r加入到大的sparse_J, sparse_r中，同时制作preconditioner, 最后调用leastsquare_pcg
-//    void add(Eigen::SparseMatrix<double> &sparse_J,
-//             Eigen::SparseVector<double> &sparse_r,
-//             myLandmark *l);
-
     double solveSystem(VecXd &dx) {
         double energy = 0.0;
 
@@ -128,7 +122,6 @@ public:
 ///     return energy for compare, and to decide the next iterate
         /// 这个不可以并行化
         energy = _compose1();
-//        std::cout << "_compose1 done" << std::endl;
         /// dx是所有pose的更新值
         /// _compute可以并行化
         _compute1(dx);
@@ -185,9 +178,7 @@ public:
             MatXXd H = (l->orig_Jl).transpose() * (l->orig_Jl);
             VecXd r = l->orig_r - l->orig_Jp * local_dx;
             VecXd b = (l->orig_Jl).transpose() * r;
-//            VecXd dy = l->orig_Jl.ldlt().solve(l->orig_r - l->orig_Jp * local_dx);
             VecXd dy = H.ldlt().solve(b);
-//            std::cout << "dy: " << dy.transpose() << std::endl;
             l->oplusImpl(-dy);
         }
     }
