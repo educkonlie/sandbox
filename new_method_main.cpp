@@ -13,9 +13,13 @@ float fy = 703.522;
 float cx = 600.928;
 float cy = 182.121;
 
+int first_cam = 0;
+int last_cam  = 0;
 // plot the cams and points for you, need pangolin
 void Draw(std::string title, const VecSE3d &cams, const VecVec3d points[], const vector<int > &host);
 void printResult(std::string file, const VecSE3d &cams);
+
+void run();
 
 //! 先基于g2o的改造成自己的Pose和Landmark，并且测试一下计算residual和energy和jacobi是否正确
 int main(int argc, char **argv)
@@ -24,6 +28,8 @@ int main(int argc, char **argv)
     VecSE3d cams;
     VecVec3d points[100 * 100];
     std::vector<Vec8d > color[100 * 100];
+
+    run();
 
     std::ifstream fin(camera_file);
     while (!fin.eof()) {

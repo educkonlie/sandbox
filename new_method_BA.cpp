@@ -137,7 +137,10 @@ void myOptimizer::_linearize_one_landmark(myLandmark *l) {
         l->Jp = MatXXd::Zero(0, 0);
         l->r = VecXd::Zero(0);
     } else {
-        l->Jp = l->Jp.bottomRows(l->Jp.rows() - LAND_SIZE);
+        int rs = l->Jp.rows();
+        assert(rs > LAND_SIZE);
+        MatXXd temp = l->Jp.bottomRows(rs - LAND_SIZE);
+        l->Jp = temp;
 //        std::cout << "Jp after:\n" << l->Jp << std::endl;
         l->r = l->r.bottomRows(l->r.rows() - LAND_SIZE);
     }
@@ -170,6 +173,7 @@ double myOptimizer::_compose1() {
     int startRow, startCol;
     startRow = startCol = 0;
     double energy = 0.0;
+    std::cout << "compose start" << std::endl;
 
 #ifdef TRIPLET_LIST
     _tripletList.clear();
@@ -197,16 +201,18 @@ double myOptimizer::_compose1() {
 #endif
             }
         }
+        std::cout << "triplet size: " << _tripletList.size() << std::endl;
 //        std::cout << "done........" << std::endl;
 //        std::cout << "big_J: row col: " << _big_J.rows() << " " << _big_J.cols() << std::endl;
         this->_big_r.middleRows(startRow, l->r.rows()) = l->r;
         energy += l->energy;
         startRow += l->Jp.rows() /*- LAND_SIZE*/;
     }
+    std::cout << "all done.1......." << energy << std::endl;
 #ifdef TRIPLET_LIST
     this->_big_J.setFromTriplets(_tripletList.begin(), _tripletList.end());
 #endif
-    std::cout << "all done........" << energy << std::endl;
+    std::cout << "all done.2......." << energy << std::endl;
     return energy;
 }
 void myOptimizer::_compute1(VecXd &dx) {

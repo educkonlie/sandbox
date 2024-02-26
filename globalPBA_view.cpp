@@ -3,6 +3,7 @@
 //
 #include "globalPBA.h"
 extern float fx, fy, cx, cy;
+extern int first_cam, last_cam;
 void Draw(string title, const VecSE3d &cams, const VecVec3d points[], const vector<int > &host)
 {
     // create pangolin window and plot the trajectory
@@ -10,6 +11,12 @@ void Draw(string title, const VecSE3d &cams, const VecVec3d points[], const vect
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+//    const int UI_WIDTH = 180;
+        // parameter reconfigure gui
+//    pangolin::CreatePanel("ui").SetBounds(0.0, 1.0, 0.0, pangolin::Attach::Pix(UI_WIDTH));
+//    pangolin::Var<int> settings_cams_first("ui.first_camera", 0, 0, 1000, false);
+//    pangolin::Var<int> settings_cams_last("ui.last_camera", 500, 1, 1000, false);
 
     pangolin::OpenGlRenderState s_cam(
             pangolin::ProjectionMatrix(1024, 768, 500, 500, 512, 389, 0.1, 1000),
@@ -27,6 +34,9 @@ void Draw(string title, const VecSE3d &cams, const VecVec3d points[], const vect
 
         d_cam.Activate(s_cam);
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+
+//        first_cam = settings_cams_first.Get();
+//        last_cam  = settings_cams_last.Get();
 
         // draw poses
         float sz = 0.5;
@@ -103,4 +113,41 @@ void printResult(std::string file, const VecSE3d &cams)
         first = false;
     }
     myfile.close();
+}
+
+void run()
+{
+    double w = 400;
+    double h = 800;
+    printf("START PANGOLIN!\n");
+
+    pangolin::CreateWindowAndBind("Main",2*w,2*h);
+    const int UI_WIDTH = 180;
+
+    glEnable(GL_DEPTH_TEST);
+
+    // parameter reconfigure gui
+    pangolin::CreatePanel("ui").SetBounds(0.0, 1.0, 0.0, pangolin::Attach::Pix(UI_WIDTH));
+    pangolin::Var<int> settings_cams_first("ui.first_camera", 0, 0, 1000, false);
+    pangolin::Var<int> settings_cams_last("ui.last_camera", 500, 1, 1000, false);
+
+    {
+        // Default hooks for exiting (Esc) and fullscreen (tab).
+        while (!pangolin::ShouldQuit()) {
+            // Clear entire screen
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            first_cam = settings_cams_first.Get();
+            last_cam  = settings_cams_last.Get();
+            // update parameters
+//            int settings_pointCloudMode_i = settings_pointCloudMode.Get();
+//        bool settings_showActiveConstraints_b = settings_showActiveConstraints.Get();
+//            double settings_absVarTH_d = settings_absVarTH.Get();
+            // Swap frames and Process Events
+            pangolin::FinishFrame();
+//        if(needReset) reset_internal();
+        }
+    }
+    printf("QUIT Pangolin thread!\n");
+//    printf("I'll just kill the whole process.\nSo Long, and Thanks for All the Fish!\n");
+//    exit(1);
 }

@@ -40,6 +40,8 @@ float cy = 182.121;
 //float fy = 700.0;
 //float cx = 0.0;
 //float cy = 0.0;
+int first_cam = 0;
+int last_cam  = 0;
 
 // plot the cams and points for you, need pangolin
 void Draw(std::string title, const VecSE3d &cams, const VecVec3d points[], const vector<int > &host);
@@ -203,6 +205,7 @@ int main(int argc, char **argv)
                 edge->setVertex(1, land); //! 投影的点为所有的vp[host_id]
                 edge->setMeasurement(measure);
                 edge->setInformation(Eigen::Matrix<double, 2, 2>::Identity());
+                /// 这个估计影响不大，因为没有特别outlier的点
                 edge->setRobustKernel(new g2o::RobustKernelHuber());
                 optimizer.addEdge(edge);
 //                break;
