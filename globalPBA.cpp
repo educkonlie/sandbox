@@ -1,11 +1,13 @@
 #include "globalPBA.h"
 #include <random>
 
-
+double global_pose_R_error = 0.01;
+double global_pose_t_error = 0.01;
+double global_landmark_t_error = 0.2;
 Sophus::SE3d AddNoiseinPose(Sophus::SE3d &pose)
 {
-    static std::normal_distribution<double> pose_rotation_noise(0., 0.01);
-    static std::normal_distribution<double> pose_position_noise(0., 0.01);
+    static std::normal_distribution<double> pose_rotation_noise(0., global_pose_R_error);
+    static std::normal_distribution<double> pose_position_noise(0., global_pose_t_error);
     static std::default_random_engine generator;
 //    for (size_t i = 0; i < poses.size(); ++i) {
         // 给相机位置和姿态初值增加噪声
@@ -34,7 +36,7 @@ Sophus::SE3d AddNoiseinPose(Sophus::SE3d &pose)
 Vec3d AddNoiseinPoint(Vec3d &point)
 {
     static std::default_random_engine generator;
-    static std::normal_distribution<double> landmark_position_noise(0., 0.2);
+    static std::normal_distribution<double> landmark_position_noise(0., global_landmark_t_error);
 //    static std::normal_distribution<double> landmark_position_noise(0., 0.0);
 // 为初值添加随机噪声
     Vec3d noise(landmark_position_noise(generator),

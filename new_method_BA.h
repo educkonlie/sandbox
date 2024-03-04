@@ -92,6 +92,7 @@ public:
     MatXXd orig_Jl;
     VecXd  orig_r;
     std::vector<myEdge *> edges;
+//    std::vector<Eigen::triplet<double> > _tripletList;
 private:
     Vec3d _estimate;
 };

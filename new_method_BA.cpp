@@ -144,6 +144,16 @@ void myOptimizer::_linearize_one_landmark(myLandmark *l) {
 //        std::cout << "Jp after:\n" << l->Jp << std::endl;
         l->r = l->r.bottomRows(l->r.rows() - LAND_SIZE);
     }
+
+//    int startRow = 0;
+//    int startCol = 0;
+//    for (int i = 0; i < l->edges.size(); i++) {
+//        startCol = l->edges[i]->getPose()->pose_id * POSE_SIZE;
+//        MatXXd blk = l->Jp.middleCols(i * POSE_SIZE, POSE_SIZE);
+//        for (int m = 0; m < blk.rows(); m++)
+//            for (int n = 0; n < blk.cols(); n++)
+//                _tripletList.push_back(T(startRow + m, startCol + n, blk(m, n)));
+//    }
     // to
 }
 
@@ -175,43 +185,49 @@ double myOptimizer::_compose1() {
     double energy = 0.0;
     std::cout << "compose start" << std::endl;
 
-#ifdef TRIPLET_LIST
-    _tripletList.clear();
-#endif
+//#ifdef TRIPLET_LIST
+//    _tripletList.clear();
+//    _tripletList.reserve(1000 * 20);
+//#endif
     for (auto l : _allLandmarks) {
         assert(l);
         assert(l->edges);
 
         if (l->Jp.rows() == 0)
             continue;
+        std::vector<T > tripletList;
+
         for (int i = 0; i < l->edges.size(); i++) {
             startCol = l->edges[i]->getPose()->pose_id * POSE_SIZE;
-//            std::cout << "startCol: " << startCol << std::endl;
-//            std::cout << "startRow: " << startRow << std::endl;
             MatXXd blk = l->Jp.middleCols(i * POSE_SIZE, POSE_SIZE);
-//            std::cout << "blk rows: " << blk.rows() << std::endl;
-//            std::cout << "blk cols: " << blk.cols() << std::endl;
             {
                 for (int m = 0; m < blk.rows(); m++)
                     for (int n = 0; n < blk.cols(); n++)
 #ifdef TRIPLET_LIST
-                        _tripletList.push_back(T(startRow + m, startCol + n, blk(m, n)));
+                        tripletList.push_back(T(startRow + m, startCol + n, blk(m, n)));
 #else
                         this->_big_J.insert(startRow + m, startCol + n) = blk(m, n);
 #endif
             }
         }
-        std::cout << "triplet size: " << _tripletList.size() << std::endl;
+        this->_big_J.setFromTriplets(tripletList.begin(), tripletList.end());
+//        if (_tripletList.size() % (100) == 0)
+//            std::cout << "triplet size: " << _tripletList.size() << std::endl;
 //        std::cout << "done........" << std::endl;
 //        std::cout << "big_J: row col: " << _big_J.rows() << " " << _big_J.cols() << std::endl;
         this->_big_r.middleRows(startRow, l->r.rows()) = l->r;
         energy += l->energy;
         startRow += l->Jp.rows() /*- LAND_SIZE*/;
+//#ifdef TRIPLET_LIST
+//        if (_tripletList.size() > 1000 * 10) {
+//            this->_big_J.setFromTriplets(_tripletList.begin(), _tripletList.end());
+//            _tripletList.clear();
+//            _tripletList.reserve(1000 * 20);
+//        }
+//#endif
     }
     std::cout << "all done.1......." << energy << std::endl;
-#ifdef TRIPLET_LIST
-    this->_big_J.setFromTriplets(_tripletList.begin(), _tripletList.end());
-#endif
+
     std::cout << "all done.2......." << energy << std::endl;
     return energy;
 }

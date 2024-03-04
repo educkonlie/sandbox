@@ -4,19 +4,31 @@
 #include "globalPBA.h"
 extern float fx, fy, cx, cy;
 extern int first_cam, last_cam;
-void Draw(string title, const VecSE3d &cams, const VecVec3d points[], const vector<int > &host)
+extern bool global_start;
+extern double global_pose_R_error;
+extern double global_pose_t_error;
+extern double global_landmark_t_error;
+void Draw(string title, const VecSE3d &cams, const VecVec3d points[], const vector<int > &host, std::mutex &m)
 {
     // create pangolin window and plot the trajectory
-    pangolin::CreateWindowAndBind(title.c_str(), 1024, 768);
+    pangolin::CreateWindowAndBind(title.c_str(), 2 * 1024, 2 * 768);
+
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-//    const int UI_WIDTH = 180;
+    const int UI_WIDTH = 180;
         // parameter reconfigure gui
-//    pangolin::CreatePanel("ui").SetBounds(0.0, 1.0, 0.0, pangolin::Attach::Pix(UI_WIDTH));
-//    pangolin::Var<int> settings_cams_first("ui.first_camera", 0, 0, 1000, false);
-//    pangolin::Var<int> settings_cams_last("ui.last_camera", 500, 1, 1000, false);
+    pangolin::CreatePanel("ui").SetBounds(0.0, 1.0, 0.0, pangolin::Attach::Pix(UI_WIDTH));
+
+    // pangolin::Var<int> settings_kitti_xx("ui.kitti_xx", 0, 0, 21, false);
+    // pangolin::Var<int> settings_cams_first("ui.first_camera", 0, 0, 1000, false);
+    // pangolin::Var<int> settings_cams_last("ui.last_camera", 500, 1, 1000, false);
+    /// 值， 切换键
+    pangolin::Var<bool> settings_start("ui.start", false, false);
+    pangolin::Var<double> settings_pose_R_error("ui.pose_R_error", 0.01, 0.001, 0.2, false);
+    pangolin::Var<double> settings_pose_t_error("ui.pose_t_error", 0.01, 0.001, 0.2, false);
+    pangolin::Var<double> settings_landmark_error("ui.landmark_error", 0.2, 0.02, 0.4, false);
 
     pangolin::OpenGlRenderState s_cam(
             pangolin::ProjectionMatrix(1024, 768, 500, 500, 512, 389, 0.1, 1000),
@@ -27,16 +39,21 @@ void Draw(string title, const VecSE3d &cams, const VecVec3d points[], const vect
             .SetBounds(0.0, 1.0, pangolin::Attach::Pix(175), 1.0, -1024.0f / 768.0f)
             .SetHandler(new pangolin::Handler3D(s_cam));
 
-
     //! wait for ESC or Tab
     while (pangolin::ShouldQuit() == false) {
+        m.lock();
+
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         d_cam.Activate(s_cam);
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
+        global_start = settings_start.Get();
 //        first_cam = settings_cams_first.Get();
 //        last_cam  = settings_cams_last.Get();
+        global_pose_R_error = settings_pose_R_error.Get();
+        global_pose_t_error = settings_pose_t_error.Get();
+        global_landmark_t_error = settings_landmark_error.Get();
 
         // draw poses
         float sz = 0.5;
@@ -89,8 +106,9 @@ void Draw(string title, const VecSE3d &cams, const VecVec3d points[], const vect
             }
         }
         glEnd();
-
         pangolin::FinishFrame();
+
+        m.unlock();
         usleep(5000);   // sleep 5 ms
     }
     pangolin::QuitAll();

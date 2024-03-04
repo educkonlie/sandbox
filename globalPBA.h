@@ -23,6 +23,8 @@
 #include <pangolin/pangolin.h>
 #include <boost/format.hpp>
 
+#include <thread>
+
 //#define DIRECT_METHOD
 
 #define POSE_SIZE 6
@@ -47,6 +49,7 @@ typedef Eigen::Matrix<double, Eigen::Dynamic, 1> VecXd;
 
 typedef Eigen::Map<Eigen::VectorXd> VectorRef;
 typedef Eigen::Triplet<double> T;
+
 
 using namespace std;
 
@@ -128,7 +131,6 @@ public:
 private:
 };
 //long long g_outlier = 0;
-// TODO edge of projection error, implement it
 // 16x1 error, which is the errors in patch
 // 跟特征法主要是在这个error的计算里有区别。
 // 同时，应该归属于VertexPoint的color，和
@@ -147,14 +149,12 @@ public:
     //! 投影面需要保存aff_g2l_t，一张修正了大小的img，位姿
     //! 路标点需要报存host_id，aff_g2l_h，
     virtual void computeError() override {
-        // TODO START YOUR CODE HERE
         // compute projection error ...
         auto pose = (Pose *) _vertices[0];
         auto landmark = (Landmark *) _vertices[1];
         /// project得到u, v
         /// 一个相机观测一个路标点，得到观测值：
         _error = pose->GetPixelValue(landmark->estimate()) - _measurement;
-        // TODO END YOUR CODE HERE
     }
     // Let g2o compute jacobian for you
 //    G2O_MAKE_AUTO_AD_FUNCTIONS;

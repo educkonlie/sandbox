@@ -11,6 +11,9 @@
 #include <iostream>
 
 #include <Eigen/Core>
+#include <map>
+#include <Eigen/Cholesky>
+#include <Eigen/src/Core/Matrix.h>
 
 #define scalar double
 typedef Eigen::Matrix<double,2,1> Vec2d;
@@ -39,24 +42,26 @@ typedef Eigen::Matrix<scalar, Eigen::Dynamic, 1> VecXc;
 typedef std::vector<Vec3d, Eigen::aligned_allocator<Vec3d>> VecVec3d;
 #endif
 
-
-
-
 /// 1X6 1X3 1X1
 /// Jp  Jl  r
 /// 6X6 blockdiagonal
 ///有上述四种block，然后set_block(startRow, startCol, block)
 /// 之前pcg中的手撸线程池太复杂了，应该可以简化成用openmp
 /// 其实本项目中只需要template <1, 6>这种类型，可以增加一个transpose操作，和跟VecX的矩阵乘法
-template <int R, int C> class BlockSparseMatrix {
+
+/// 组每块的大小不一定相等的块稀疏矩阵，组的过程中不干预每块的大小是否匹配
+/// 等到矩阵制作完成（map已经塞完）再开始为每一个块行和块列计算相对应的实际行列值
+///
+template <int C> class BlockSparseMatrix {
 public:
     BlockSparseMatrix(int BlockRows, int BlockCols) {
-        MatXXd temp;
-        for (int i = 0; i < BlockRows; i++)
-            for (int j = 0; j < BlockCols; j++)
-                _blocked_mat.push_back(temp);
         _BlockRows = BlockRows;
         _BlockCols = BlockCols;
+        for (int i = 0; i < _BlockRows; i++) {
+            _startRow_of_block.push_back(0);
+            _rows_of_block.push_back(0);
+        }
+        _rows = 0;
     }
     ~BlockSparseMatrix() {
         _blocked_mat.clear();
@@ -68,119 +73,140 @@ public:
         return _BlockCols;
     }
     /// axpy   x.row(i) += a * x.row(j)
-//    void axpy(BlockSparseMatrix &x, double a) {
-//
-//    }
-//    void xpy(BlockSparseMatrix &x,)
+
+    bool find(int startRow, int startCol, MatXXd **ret) {
+        auto it = _blocked_mat.find(std::make_pair(startRow, startCol));
+        if (it == _blocked_mat.end())
+            return false;
+        *ret = it->second;
+        return true;
+    }
+//    inline std::map<std::pair<int, int>, MatXXd *>::iterator
 
     inline void add(int startRow, int startCol, MatXXd &block) {
-        assert(block.rows() == R);
-        assert(block.cols() == C);
-        auto it = find(startRow, startCol);
-//        if ((*it).size() == 0)
-//            std::cout << 0 << std::endl;
-//        else
-//            std::cout << (*it) << std::endl;
-        if (it != _blocked_mat.end() && (*it).size() != 0) {
-            *it = *it + block;
-        } else if (it != _blocked_mat.end()){
-            *it = block;
+//        assert(block.rows() == R);
+//        assert(block.cols() == C);
+//        if (startRow >= Rs.size())
+//        assert(startRow < block_rows());
+//        assert(startCol < block_cols());
+        auto it = _blocked_mat.find(std::make_pair(startRow, startCol));
+        if (it != _blocked_mat.end()) {
+            *(it->second) = *(it->second) + block;
+        } else {
+            _blocked_mat.insert(std::make_pair(std::make_pair(startRow, startCol), &block));
         }
     }
-    inline std::vector<MatXXd>::iterator find(int startRow, int startCol) {
-        if (_blocked_mat.empty())
-            return _blocked_mat.end();
-        auto it = _blocked_mat.begin();
-        return it + (startRow * _BlockCols + startCol);
+
+    void set_startRow_of_block(int i, int k) {
+        static int prev = 0;
+        if (i == 0) {
+            _startRow_of_block[i] = 0;
+            prev = k;
+            _rows_of_block[i] = k;
+        } else {
+            _startRow_of_block[i] = _startRow_of_block[i - 1] + prev;
+            prev = k;
+            _rows_of_block[i] = k;
+        }
+        _rows = _startRow_of_block[i] + _rows_of_block[i];
+        _BlockRows = i + 1;
     }
+
     void toDenseMatrix(MatXXd &mat) {
-        assert(mat.rows() == R * _BlockRows);
-        assert(mat.cols() == C * _Blockcols);
+//        for (int i = 0; i < _startRow_of_block.size(); i++)
+//            std::cout << "..." << _startRow_of_block[i] << std::endl;
         for (int i = 0; i < _BlockRows; i++)
             for (int j = 0; j < _BlockCols; j++) {
-                auto it = find(i, j);
-                if (it != _blocked_mat.end() && (*it).data() != NULL)
-                    mat.block(i * R, j * C, R, C) = *it;
+                auto it = _blocked_mat.find(std::make_pair(i, j));
+                if (it != _blocked_mat.end()) {
+//                    std::cout << i << " " << j << "\n" << *(it->second) << std::endl;
+//                    std::cout << "start row: " << _startRow_of_block[i] << std::endl;
+                    mat.block(_startRow_of_block[i], j * C,
+                              _rows_of_block[i], C)
+                            = *(it->second);
+                }
             }
     }
 
+    void right_multiply(VecXd &q, VecXd &Aq) {
+        std::vector<VecXd> temp;
+        for (int i = 0; i < this->block_rows(); i++) {
+            temp.push_back(VecXd::Zero(this->_rows_of_block[i]));
+        }
+        /// 并行化
+//#pragma omp parallel for collapse(2)
+#pragma omp parallel for
+        for (int i = 0; i < this->block_rows(); i++) {
+            for (int j = 0; j < this->block_cols(); j++) {
+                auto it = this->_blocked_mat.find(std::make_pair(i, j));
+                if (it != _blocked_mat.end()) {
+                    temp[i] += *(it->second) * q.middleRows(j * C, C);
+                }
+            }
+        }
+#pragma omp parallel for
+        for (int i = 0; i < this->block_rows(); i++) {
+            Aq.middleRows(this->_startRow_of_block[i], this->_rows_of_block[i]) = temp[i];
+        }
+    }
+    void transpose_right_multiply(VecXd &q, VecXd &Atq) {
+        std::vector<VecXd> temp;
+        for (int i = 0; i < this->block_cols(); i++) {
+            temp.push_back(VecXd::Zero(C));
+        }
+        /// 并行化
+#pragma omp parallel for
+        for (int j = 0; j < this->block_cols(); j++) {
+            for (int i = 0; i < this->block_rows(); i++) {
+//#pragma omp parallel for  reduction(+:Atq)
+                auto it = this->_blocked_mat.find(std::make_pair(i, j));
+                if (it != _blocked_mat.end()) {
+                    temp[j] += (*(it->second)).transpose() *
+                            q.middleRows(_startRow_of_block[i], _rows_of_block[i]);
+                }
+            }
+        }
+#pragma omp parallel for
+        for (int i = 0; i < this->block_cols(); i++) {
+            Atq.middleRows(i * C, C) = temp[i];
+        }
+    }
+    int rows() {
+        return _rows;
+    }
+    void AAq(VecXd &q, VecXd &AAq) {
+        VecXd Aq = VecXd::Zero(_rows);
+        right_multiply(q, Aq);
+        transpose_right_multiply(Aq, AAq);
+    }
+    void get_M_inv(MatXXd &M_inv) {
+        MatXXd diag[1000];
+        MatXXd *p;
+#pragma omp parallel for
+        for (int j = 0; j < this->block_cols(); j++)
+            for (int i = 0; i < this->block_rows(); i++) {
+                if (this->find(i, j, &p)) {
+                    if (diag[j].size() == 0) {
+                        diag[j] = (*p).transpose() * (*p);
+                    } else {
+                        diag[j] += (*p).transpose() * (*p);
+                    }
+                }
+            }
+        for (int j = 0; j < this->block_cols(); j++)
+            M_inv.block(j * C, j * C, C, C) =
+                    diag[j].selfadjointView<Eigen::Upper>().llt().solve(MatXXd::Identity(C, C));
+    }
 private:
-    std::vector<MatXXd > _blocked_mat;
+    std::map<std::pair<int, int>, MatXXd *> _blocked_mat;
     int _BlockRows;
     int _BlockCols;
+    int _rows;
+    std::vector<int> _startRow_of_block;
+    std::vector<int> _rows_of_block;
 };
 
-/// 行向量，按列分块
-template <int C> class mySparseRowVec {
-public:
-    mySparseRowVec(int BlockCols) {
-        VecXd temp;
-        for (int j = 0; j < BlockCols; j++)
-            _blocked_vec.push_back(temp);
-        _BlockCols = BlockCols;
-    }
-    ~mySparseRowVec() {
-        _blocked_vec.clear();
-    }
-    inline int BlockCols() {
-        return _BlockCols;
-    }
-    // = or +=
-    inline void add(int startCol, VecXd &block) {
-        assert(block.cols() == C);
-        assert(startCol < _BlockCols);
 
-        if ((_blocked_vec[startCol]).size() == 0)
-            _blocked_vec[startCol] = block;
-        else
-            _blocked_vec[startCol] += block;
-    }
-    inline VecXd middleBlock(int i) {
-        return _blocked_vec[i];
-    }
-    /// 将稀疏行x乘上标量a加到本稀疏行上去
-    void axpy(mySparseRowVec &x, double a) {
-        for (int i = 0; i < x.BlockCols(); i++) {
-            add(i, a * x.middleBlock(i));
-        }
-    }
-    /// 将稀疏行x加到本稀疏行上去
-    void xpy(mySparseRowVec &x) {
-        for (int i = 0; i < x.BlockCols(); i++) {
-            add(i, x.middleBlock(i));
-        }
-    }
-    void toDenseVec(VecXd &vec) {
-        assert(vec.rows() == C * _Blockcols);
-        for (int j = 0; j < _BlockCols; j++) {
-            if (_blocked_vec[j].size() == 0)
-                continue;
-            vec.middleRows(j * C, C) = _blocked_vec[j];
-        }
-    }
-//    void scalarMul(double a) {
-//        for (int i = 0; i < _BlockCols; i++) {
-//            if (_blocked_vec[i].size() == 0)
-//                continue;
-//            _blocked_vec[i] = a * _blocked_vec[i];
-//        }
-//    }
-    /// 稀疏行 × q == scalar
-    double Aq(VecXd &q) {
-        assert(q.rows() == _BlockCols * C);
-        double sum = 0.0;
-        for (int i = 0; i < _BlockCols; i++) {
-            if (_blocked_vec[i].size() == 0)
-                continue;
-            sum += (_blocked_vec[i]).transpose() * q.middleRows(i * C, C);
-        }
-        return sum;
-    }
-
-private:
-    std::vector<VecXd > _blocked_vec;
-    int _BlockCols;
-};
 
 /// += means = or +=
 /// rowVec += myMat.row(i)

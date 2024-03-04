@@ -5,8 +5,8 @@
 //! 内部优化包括g2o优化使用 pose landmark，这是两个vertex
 
 // global variables
-std::string camera_file = "/mnt/data/dso-4-reading/result.txt";
-std::string point_file = "/mnt/data/dso-4-reading/point_cloud.txt";
+std::string camera_file = "/mnt/data/dso-4-reading/build/bin/result.txt";
+std::string point_file = "/mnt/data/dso-4-reading/build/bin/point_cloud.txt";
 
 float fx = 705.919;
 float fy = 703.522;
@@ -16,7 +16,7 @@ float cy = 182.121;
 int first_cam = 0;
 int last_cam  = 0;
 // plot the cams and points for you, need pangolin
-void Draw(std::string title, const VecSE3d &cams, const VecVec3d points[], const vector<int > &host);
+void Draw(std::string title, const VecSE3d &cams, const VecVec3d points[], const vector<int > &host, std::mutex &m);
 void printResult(std::string file, const VecSE3d &cams);
 
 void run();
@@ -29,7 +29,7 @@ int main(int argc, char **argv)
     VecVec3d points[100 * 100];
     std::vector<Vec8d > color[100 * 100];
 
-    run();
+//    run();
 
     std::ifstream fin(camera_file);
     while (!fin.eof()) {
@@ -273,8 +273,12 @@ int main(int argc, char **argv)
     }
 
     std::cout << "7....." << std::endl;
+    std::mutex m;
     // perform optimization
-    Draw(string("before"), cams_noisy, points_noisy, host);
+//    std::thread runthread([&]() {
+        Draw(string("before"), cams_noisy, points_noisy, host, m);
+//    });
+//    runthread.join();
 
 #ifdef USE_G2O
     optimizer.initializeOptimization(0);
@@ -304,7 +308,7 @@ int main(int argc, char **argv)
 //    cout << "outlier: " << g_outlier << endl;
     // plot the optimized points and poses
 #endif
-    Draw(string("after"), cams, points, host);
+    Draw(string("after"), cams, points, host, m);
     printResult(string("/mnt/data/dso-4-reading/gpba_result.txt"), cams);
     return 0;
 }
