@@ -53,8 +53,8 @@ add_executable(newBA new_method_main.cpp
 )
 target_link_libraries(newBA ${G2O_LIBS} ${OpenCV_LIBS} ${Pangolin_LIBRARIES})
 
-add_executable(BlockSparseMatrix BlockSparseMatrix.cpp)
-target_link_libraries(BlockSparseMatrix)
+#add_executable(BlockSparseMatrix BlockSparseMatrix.cpp)
+#target_link_libraries(BlockSparseMatrix)
 
 #add_executable(pangolin_main pangolin_main.cpp)
 #target_link_libraries(pangolin_main ${G2O_LIBS} ${OpenCV_LIBS} ${Pangolin_LIBRARIES})

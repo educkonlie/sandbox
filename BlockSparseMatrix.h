@@ -11,11 +11,12 @@
 #include <iostream>
 
 #include <Eigen/Core>
+//#include <eigen3/Eigen/Core>
 #include <map>
 #include <Eigen/Cholesky>
 #include <Eigen/src/Core/Matrix.h>
 
-#define scalar double
+//#define scalar double
 typedef Eigen::Matrix<double,2,1> Vec2d;
 typedef Eigen::Matrix<double,3,1> Vec3d;
 typedef Eigen::Matrix<double, 3, 3> Mat33d;
@@ -24,22 +25,24 @@ typedef Eigen::Matrix<double,8,1> Vec8d;
 typedef Eigen::Matrix<double,2,6> Mat26d;
 typedef Eigen::Matrix<double,2,3> Mat23d;
 
-typedef Eigen::Matrix<scalar,2,1> Vec2c;
-typedef Eigen::Matrix<scalar,3,1> Vec3c;
-typedef Eigen::Matrix<scalar, 3, 3> Mat33c;
-typedef Eigen::Matrix<scalar,16,1> Vec16c;
-typedef Eigen::Matrix<scalar,8,1> Vec8c;
-typedef Eigen::Matrix<scalar,2,6> Mat26c;
-typedef Eigen::Matrix<scalar,2,3> Mat23c;
+//typedef Eigen::Matrix<scalar,2,1> Vec2c;
+//typedef Eigen::Matrix<scalar,3,1> Vec3c;
+//typedef Eigen::Matrix<scalar, 3, 3> Mat33c;
+//typedef Eigen::Matrix<scalar,16,1> Vec16c;
+//typedef Eigen::Matrix<scalar,8,1> Vec8c;
+//typedef Eigen::Matrix<scalar,2,6> Mat26c;
+//typedef Eigen::Matrix<scalar,2,3> Mat23c;
 
 typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> MatXXdr;
 typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor> MatXXd;
 typedef Eigen::Matrix<double, Eigen::Dynamic, 1> VecXd;
-typedef Eigen::Matrix<scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> MatXXcr;
-typedef Eigen::Matrix<scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor> MatXXc;
-typedef Eigen::Matrix<scalar, Eigen::Dynamic, 1> VecXc;
+//typedef Eigen::Matrix<scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> MatXXcr;
+//typedef Eigen::Matrix<scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor> MatXXc;
+//typedef Eigen::Matrix<scalar, Eigen::Dynamic, 1> VecXc;
 
 typedef std::vector<Vec3d, Eigen::aligned_allocator<Vec3d>> VecVec3d;
+#else
+#include "globalPBA.h"
 #endif
 
 /// 1X6 1X3 1X1
@@ -66,6 +69,9 @@ public:
     ~BlockSparseMatrix() {
         _blocked_mat.clear();
     }
+    int getC() {
+        return C;
+    }
     int block_rows() {
         return _BlockRows;
     }
@@ -79,6 +85,7 @@ public:
         if (it == _blocked_mat.end())
             return false;
         *ret = it->second;
+//        std::cout << "it->second\n" << *(it->second) << std::endl;
         return true;
     }
 //    inline std::map<std::pair<int, int>, MatXXd *>::iterator
@@ -135,7 +142,7 @@ public:
         }
         /// 并行化
 //#pragma omp parallel for collapse(2)
-#pragma omp parallel for
+//#pragma omp parallel for
         for (int i = 0; i < this->block_rows(); i++) {
             for (int j = 0; j < this->block_cols(); j++) {
                 auto it = this->_blocked_mat.find(std::make_pair(i, j));
@@ -144,7 +151,7 @@ public:
                 }
             }
         }
-#pragma omp parallel for
+//#pragma omp parallel for
         for (int i = 0; i < this->block_rows(); i++) {
             Aq.middleRows(this->_startRow_of_block[i], this->_rows_of_block[i]) = temp[i];
         }
@@ -155,7 +162,7 @@ public:
             temp.push_back(VecXd::Zero(C));
         }
         /// 并行化
-#pragma omp parallel for
+//#pragma omp parallel for
         for (int j = 0; j < this->block_cols(); j++) {
             for (int i = 0; i < this->block_rows(); i++) {
 //#pragma omp parallel for  reduction(+:Atq)
@@ -166,7 +173,7 @@ public:
                 }
             }
         }
-#pragma omp parallel for
+//#pragma omp parallel for
         for (int i = 0; i < this->block_cols(); i++) {
             Atq.middleRows(i * C, C) = temp[i];
         }
@@ -180,24 +187,185 @@ public:
         transpose_right_multiply(Aq, AAq);
     }
     void get_M_inv(MatXXd &M_inv) {
-        MatXXd diag[1000];
+        MatXXd diag[10000];
         MatXXd *p;
-#pragma omp parallel for
+
+//        for (int i = 0; i < this->block_rows(); i++)
+//            for (int j = 0; j < this->block_cols(); j++) {
+//                auto it = _blocked_mat.find(make_pair(i, j));
+//                if (it != _blocked_mat.end()) {
+//                    auto t = *(it->second);
+//                    std::cout << "it:\n" << t.cols() << std::endl;
+//                }
+//            }
+////////  必须预指定哪几个线程处理哪几条，要不会有问题
+//#pragma omp parallel for
         for (int j = 0; j < this->block_cols(); j++)
             for (int i = 0; i < this->block_rows(); i++) {
                 if (this->find(i, j, &p)) {
                     if (diag[j].size() == 0) {
                         diag[j] = (*p).transpose() * (*p);
+//                        std::cout << "*p\n" << *p << std::endl;
+//                        std::cout << "diag[j]\n" << diag[j].rows() << " " << diag[j].cols() << std::endl;
                     } else {
                         diag[j] += (*p).transpose() * (*p);
                     }
                 }
             }
-        for (int j = 0; j < this->block_cols(); j++)
+        for (int j = 0; j < this->block_cols(); j++) {
             M_inv.block(j * C, j * C, C, C) =
                     diag[j].selfadjointView<Eigen::Upper>().llt().solve(MatXXd::Identity(C, C));
+//            M_inv.block(j * C, j * C, C, C) =
+//                    diag[j] * (MatXXd::Identity(C, C) - );
+        }
+//        for (int j = 0; j < this->block_cols() * C; j++) {
+//            if (M_inv(j, j) == 0.0)
+//                M_inv(j, j) = 1.0;
+//            else
+//                M_inv(j, j) = 1.0 / M_inv(j, j);
+//        }
+    }
+    void leastsquare_pcg_BlockSparse(MatXXd &M_inv, VecXd &b, VecXd &x, double tor, int maxiter)
+    {
+        static int num_of_iter = 0;
+        static int num_of_pcg = 0;
+        num_of_pcg++;
+        int i = 0;
+
+//    int C = A.getC();
+
+        x = VecXd::Zero(this->block_cols() * C);
+
+        VecXd Atb = VecXd::Zero(this->block_cols() * C);
+        this->transpose_right_multiply(b, Atb);
+//    VecXc Atb2 = A_dense.transpose() * b;
+//    std::cout << "Atb:  " << Atb.transpose() << std::endl;
+//    std::cout << "Atb2: " << Atb2.transpose() << std::endl;
+        VecXd r = Atb; // - A.transpose() * (A * x);
+        VecXd d = M_inv * r;
+
+        double delta_new = r.transpose() * d;
+        double delta_0 = delta_new;
+        double delta_old;
+        double alpha;
+        double beta;
+
+        std::cout << "cg delta_0: " << delta_0 << std::endl;
+
+        VecXd q = VecXd::Zero(this->block_cols() * C);
+        while (i < maxiter && delta_new > tor * tor * delta_0) {
+//        VecXc q = A.transpose() * (A * d);
+//            std::cout << "AAq start.." << std::endl;
+            this->AAq(d, q);
+//            std::cout << "AAq end.." << std::endl;
+//            std::cout << delta_new << std::endl;
+            alpha = delta_new / (d.transpose() * q);
+            x = x + alpha * d;
+
+            if (i % 5 == 0) {
+//            if (true) {
+                VecXd temp = VecXd::Zero(this->block_cols() * C);
+                this->AAq(x, temp);
+                r = Atb - temp;
+            } else {
+                r = r - alpha * q;
+            }
+
+//        VecXc s = lambda.asDiagonal() * r;
+            VecXd s = M_inv * r;
+            delta_old = delta_new;
+            delta_new = r.transpose() * s;
+
+            num_of_iter++;
+
+            beta = delta_new / delta_old;
+            d = s + beta * d;
+            i++;
+        }
+        std::cout << "iters:        " << i << std::endl;
+        std::cout << "total iters:  " << num_of_iter << std::endl;
+        std::cout << "iters per pcg:" << num_of_iter / num_of_pcg << std::endl;
+    }
+    void least_square_conjugate_gradient(MatXXd &M_inv, VecXd &b, VecXd &x,
+                                         int iters,
+                                         double tol_error)
+    {
+//        using std::sqrt;
+//        using std::abs;
+
+        double tol = tol_error;
+        int maxIters = iters;
+
+//        int m = this->rows(), n = this->cols();
+        int m = this->rows();
+        int n = this->block_cols() * C;
+
+        x = VecXd::Zero(n);
+
+//        VecXd residual        = b - this->right_multiply(x);
+        VecXd res = b;
+        VecXd r = VecXd::Zero(n);
+        this->transpose_right_multiply(res, r);
+
+        VecXd Atb = VecXd::Zero(n);
+        this->transpose_right_multiply(b, Atb);
+
+        double rhsNorm2 = Atb.squaredNorm();
+
+        if(rhsNorm2 == 0) {
+            x.setZero();
+            iters = 0;
+            tol_error = 0;
+            return;
+        }
+        double threshold = tol*tol*rhsNorm2;
+        double residualNorm2 = r.squaredNorm();
+        if (residualNorm2 < threshold) {
+            iters = 0;
+            tol_error = std::sqrt(residualNorm2 / rhsNorm2);
+            std::cout << "tol_error: " << tol_error << std::endl;
+            return;
+        }
+
+        VecXd p(n);
+//    p = precond.solve(normal_residual);                         // initial search direction
+        p = M_inv * r;
+
+        VecXd z(n), tmp(m);
+        double absNew = r.dot(p);  // the square of the absolute value of r scaled by invM
+        int i = 0;
+
+        while(i < maxIters) {
+            this->right_multiply(p, tmp);
+
+            double alpha = absNew / tmp.squaredNorm();      // the amount we travel on dir
+            x += alpha * p;                                 // update solution
+            res -= alpha * tmp;                        // update residual
+//            r = A.adjoint() * res;     // update residual of the normal equation
+            this->transpose_right_multiply(res, r);
+
+            residualNorm2 = r.squaredNorm();
+            if(residualNorm2 < threshold)
+                break;
+
+//        z = precond.solve(normal_residual);             // approximately solve for "A'A z = normal_residual"
+            z = M_inv * r;
+
+            double absOld = absNew;
+            absNew = r.dot(z);  // update the absolute value of r
+            double beta = absNew / absOld;              // calculate the Gram-Schmidt value used to create the new search direction
+            p = z + beta * p;                               // update search direction
+            i++;
+
+//            tol_error = std::sqrt(residualNorm2 / rhsNorm2);
+            std::cout << "resN2: " << residualNorm2 << " threshold: " << threshold << std::endl;
+        }
+        tol_error = std::sqrt(residualNorm2 / rhsNorm2);
+        std::cout << "tol_error: " << tol_error << std::endl;
+        iters = i;
     }
 private:
+//    std::map<std::pair<int, int>, MatXXd *> _blocked_mat;
     std::map<std::pair<int, int>, MatXXd *> _blocked_mat;
     int _BlockRows;
     int _BlockCols;
@@ -206,6 +374,69 @@ private:
     std::vector<int> _rows_of_block;
 };
 
+#if 0
+void least_square_conjugate_gradient(const BlockSparseMatrix &A, VecXd &b, VecXd &x,
+                                     MatXXd &M_inv, int &iters,
+                                     double &tol_error)
+{
+    using std::sqrt;
+    using std::abs;
+
+    double tol = tol_error;
+    int maxIters = iters;
+
+    int m = A.rows(), n = A.cols();
+
+    VecXd residual        = b - A * x;
+    VecXd normal_residual = A.adjoint() * residual;
+
+    double rhsNorm2 = (A.adjoint() * b).squaredNorm();
+    if(rhsNorm2 == 0) {
+        x.setZero();
+        iters = 0;
+        tol_error = 0;
+        return;
+    }
+    double threshold = tol*tol*rhsNorm2;
+    double residualNorm2 = normal_residual.squaredNorm();
+    if (residualNorm2 < threshold) {
+        iters = 0;
+        tol_error = sqrt(residualNorm2 / rhsNorm2);
+        return;
+    }
+
+    VecXd p(n);
+//    p = precond.solve(normal_residual);                         // initial search direction
+    p = M_inv * normal_residual;
+
+    VecXd z(n), tmp(m);
+    double absNew = normal_residual.dot(p);  // the square of the absolute value of r scaled by invM
+    int i = 0;
+    while(i < maxIters) {
+        tmp.noalias() = A * p;
+
+        double alpha = absNew / tmp.squaredNorm();      // the amount we travel on dir
+        x += alpha * p;                                 // update solution
+        residual -= alpha * tmp;                        // update residual
+        normal_residual = A.adjoint() * residual;     // update residual of the normal equation
+
+        residualNorm2 = normal_residual.squaredNorm();
+        if(residualNorm2 < threshold)
+            break;
+
+//        z = precond.solve(normal_residual);             // approximately solve for "A'A z = normal_residual"
+        z = M_inv * normal_residual;
+
+        double absOld = absNew;
+        absNew = normal_residual.dot(z);  // update the absolute value of r
+        double beta = absNew / absOld;              // calculate the Gram-Schmidt value used to create the new search direction
+        p = z + beta * p;                               // update search direction
+        i++;
+    }
+    tol_error = sqrt(residualNorm2 / rhsNorm2);
+    iters = i;
+}
+#endif
 
 
 /// += means = or +=

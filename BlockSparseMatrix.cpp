@@ -4,9 +4,10 @@
 #include "BlockSparseMatrix.h"
 
 #ifdef BLOCK_SPARSE_MAT_test
+#if 1
 #include <cstdlib>
 #include <ctime>
-#include "pcg.h"
+//#include "pcg.h"
 int main()
 {
     srand(static_cast<unsigned int>(time(0)));
@@ -42,64 +43,53 @@ int main()
 
     std::cout << "ldlt:\n" << (m.transpose() * m).ldlt().solve(m.transpose() * b).transpose() << std::endl;
 
-#if 0
-    VecXd q = VecXd::Random(9);
-    std::cout << "q\n" << q.transpose() << std::endl;
-    std::cout << "A * q\n" << (m * q).transpose() << std::endl;
-
-    VecXd AAq = VecXd::Zero(9);
-    mat.AAq(q, AAq);
-
-    std::cout << "AAq\n" << AAq.transpose() << std::endl;
-    std::cout << "A * A * q\n" << (m.transpose() * (m * q)).transpose() << std::endl;
-
-    MatXXd *p;
-    for (int i = 0; i < mat.block_rows(); i++)
-        for (int j = 0; j < mat.block_cols(); j++) {
-            if (mat.find(i, j, &p))
-                std::cout << i << " " << j << ":\n" << *p << std::endl;
-        }
-
-    MatXXd diag[1000];
-#pragma omp parallel for
-    for (int j = 0; j < mat.block_cols(); j++) {
-        for (int i = 0; i < mat.block_rows(); i++) {
-            if (mat.find(i, j, &p)) {
-                if (diag[j].size() == 0) {
-                    diag[j] = (*p).transpose() * (*p);
-                } else {
-                    diag[j] += (*p).transpose() * (*p);
-                }
-            }
-        }
-    }
-    for (int j = 0; j < mat.block_cols(); j++) {
-        std::cout << "diag: " << j << "\n" << diag[j] << std::endl;
-    }
-    MatXXd diag2[1000];
-    for (int j = 0; j < mat.block_cols(); j++)
-        for (int i = 0; i < mat.block_rows(); i++) {
-            if (mat.find(i, j, &p)) {
-                if (diag2[j].size() == 0) {
-                    diag2[j] = (*p).transpose() * (*p);
-                } else {
-                    diag2[j] += (*p).transpose() * (*p);
-                }
-            }
-        }
-    for (int j = 0; j < mat.block_cols(); j++) {
-        std::cout << "diag2: " << j << "\n" << diag2[j] << std::endl;
-    }
-#endif
 //    void leastsquare_pcg_BlockSparse(MatXXd &M_inv, BlockSparseMatrix<3> &A, VecXd &b, VecXd &x, double tor, int maxiter)
 
     MatXXd M_inv = MatXXd::Zero(8 * 3, 8 * 3);
+    MatXXd M_inv2 = MatXXd::Identity(8 * 3, 8 * 3);
     mat.get_M_inv(M_inv);
     VecXd x = VecXd::Zero(8 * 3);
-    leastsquare_pcg_BlockSparse(M_inv, mat, b, x, 1e-3, 1000);
+    mat.leastsquare_pcg_BlockSparse(M_inv, b, x, 1e-8, 1000);
     std::cout << "pcg sparse:\n" << x.transpose() << std::endl;
-    leastsquare_pcg_orig(M_inv, m, b, x, 1e-3, 1000);
-    std::cout << "pcg dense:\n" << x.transpose() << std::endl;
+//    mat.leastsquare_pcg_BlockSparse(M_inv2, b, x, 1e-8, 1000);
+//    std::cout << "pcg sparse Identity:\n" << x.transpose() << std::endl;
+    x.setZero();
+    mat.least_square_conjugate_gradient(M_inv, b, x, 1000, 1e-8);
+    std::cout << "pcg new:\n" << x.transpose() << std::endl;
+//    VecXd b2(b.rows());
+//    mat.right_multiply(x, b2);
+//    std::cout << "Ax = :" << b2.transpose() << std::endl;
+
+
+//    leastsquare_pcg_orig(M_inv, m, b, x, 1e-3, 1000);
+//    std::cout << "pcg dense:\n" << x.transpose() << std::endl;
+    return 0;
+}
+#endif
+#endif
+
+#if 0
+#include <cstdlib>
+#include <ctime>
+//#include <Eigen/Core>
+#include <Eigen/Sparse>
+#include <random>
+//#include "pcg.h"
+int main()
+{
+    std::srand(static_cast<unsigned int>(time(0)));
+
+    Eigen::SparseMatrix<double, Eigen::RowMajor> mat(1000, 1000);
+    std::vector<Eigen::Triplet<double> > triplets;
+
+    for (int i = 0; i < 6000; i++)
+        triplets.push_back(Eigen::Triplet<double>(rand() % 1000, rand() % 1000, rand() * 0.395));
+
+    mat.setFromTriplets(triplets.begin(), triplets.end());
+    VecXd p = VecXd::Random(1000);
+    VecXd q =  mat.adjoint() * p;
+
+    std::cout << q.transpose() << std::endl;
     return 0;
 }
 #endif

@@ -1,7 +1,12 @@
 #pragma once
 #include "globalPBA.h"
+#include "BlockSparseMatrix.h"
+//#include "pcg.h"
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
+
+//#define BLOCKSPARSE
+
 class myPose {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -92,11 +97,11 @@ public:
     MatXXd orig_Jl;
     VecXd  orig_r;
     std::vector<myEdge *> edges;
+    std::vector<T> _tripletList;
 //    std::vector<Eigen::triplet<double> > _tripletList;
 private:
     Vec3d _estimate;
 };
-
 /// 优化器的输入是所有的边，每条边经过一次线性化求得两行J，一次computeError得到两行r
 /// rootba应当以landmark作为基本分组单位，一个landmark会带有好几条边，生成一个Jp块，一个Jl块，一列r
 class myOptimizer {
@@ -112,20 +117,33 @@ public:
         _allLandmarks.push_back(l);
     }
 
-    double solveSystem(VecXd &dx) {
+#ifdef BLOCKSPARSE
+    double solveSystem(VecXd &dx, BlockSparseMatrix<POSE_SIZE> &big_J, VecXd &big_r) {
+#else
+    double solveSystem(VecXd &dx, Eigen::SparseMatrix<double, Eigen::RowMajor, std::ptrdiff_t> &big_J, VecXd &big_r) {
+#endif
         double energy = 0.0;
 
         /// 这个for可以用openmp并行化
+#pragma omp parallel for
         for (auto l : _allLandmarks) {
             _linearize_one_landmark(l);
         }
         ///     leastsquare_pcg(preconditioner, sparse_J, sparse_r);
 ///     return energy for compare, and to decide the next iterate
         /// 这个不可以并行化
-        energy = _compose1();
+#ifdef BLOCKSPARSE
+        energy = _compose2(big_J, big_r);
+#else
+        energy = _compose1(big_J, big_r);
+#endif
         /// dx是所有pose的更新值
         /// _compute可以并行化
-        _compute1(dx);
+#ifdef BLOCKSPARSE
+        _compute2(dx, big_J, big_r);
+#else
+        _compute1(dx, big_J, big_r);
+#endif
         return energy;
     }
     /// big circle for LM
@@ -139,14 +157,23 @@ public:
                 big_J_rows += 2;
         for (auto p : _allPoses)
             big_J_cols += POSE_SIZE;
-
         std::cout << "big_J rows: " << big_J_rows << " cols: " << big_J_cols << std::endl;
-        _big_J = Eigen::SparseMatrix<double>(big_J_rows, big_J_cols);
-        _big_r = VecXd::Zero(big_J_rows);
+//        usleep(5000 * 1000);
+
+
 
         for (int iter = 0; iter < iters; iter++) {
             std::cout << "start....solve..." << std::endl;
-            double energy = solveSystem(dx);
+#ifdef BLOCKSPARSE
+            auto big_J =
+                    BlockSparseMatrix<POSE_SIZE>(_allLandmarks.size(), _allPoses.size());
+            VecXd big_r = VecXd::Zero(big_J_rows);
+#else
+            Eigen::SparseMatrix<double, Eigen::RowMajor, std::ptrdiff_t> big_J(big_J_rows, big_J_cols);
+            VecXd big_r = VecXd::Zero(big_J_rows);
+#endif
+
+            double energy = solveSystem(dx, big_J, big_r);
             std::cout << "iter: " << iter << " energy: " << energy << std::endl;
             assert(energy >= 0);
 //            if (iter > 0 && energy > old_energy)
@@ -187,14 +214,19 @@ private:
     std::vector<T > _tripletList;
     std::vector<myPose *> _allPoses;
     std::vector<myLandmark *> _allLandmarks;
-    Eigen::SparseMatrix<double> _big_J;
-    VecXd _big_r;
+#ifdef BLOCKSPARSE
+    MatXXd _blk[10000];
+#endif
+//    Eigen::SparseMatrix<double> _big_J;
+//    BlockSparseMatrix<POSE_SIZE> _big_block_J;
+//    VecXd _big_r;
+//    VecXd _big_block_r;
     void _linearize_one_landmark(myLandmark *l);
     void _toSparseMatrix(int startRow, int startCol, MatXXd blk);
     /// 维护并计算最小二乘方程，使用eigen的稀疏矩阵
-    double _compose1();
-    void   _compute1(VecXd &dx);
+    double _compose1(Eigen::SparseMatrix<double, Eigen::RowMajor, std::ptrdiff_t> &, VecXd &);
+    void   _compute1(VecXd &dx, Eigen::SparseMatrix<double, Eigen::RowMajor, std::ptrdiff_t> &J, VecXd &r);
     /// 维护并计算最小二乘方程，使用自制的BlockSparseMatrix
-//    double _compose2(BlockSparseMatrix<double> &J, BlockSparseMatrix<double> &r, myLandmark *l);
-//    void   _compute2(VecXd &dx);
+    double _compose2(BlockSparseMatrix<POSE_SIZE> &, VecXd &);
+    void   _compute2(VecXd &dx, BlockSparseMatrix<POSE_SIZE> &J, VecXd &r);
 };

@@ -66,7 +66,10 @@ void qr3(MatXXd &Jp, MatXXd &Jl, VecXd &Jr) {
     VecXd temp3;
     int nres = Jl.rows();
     int cols = Jl.cols();
-    assert(nres > 3);
+//    std::cout << "..." << nres << std::endl;
+//    assert(nres > 3);
+    if (nres <= 3)
+        return;
     // i: row
     // j: col
     for (int j = 0; j < cols; j++) {
@@ -122,7 +125,8 @@ void myOptimizer::_linearize_one_landmark(myLandmark *l) {
     }
 
     /// 计算单路标的残差能量
-    l->energy = (l->r).transpose() * (l->r);
+//    l->energy = (l->r).transpose() * (l->r);
+    l->energy = (l->r).squaredNorm();
 //    std::cout << "l->energy " << l->energy << std::endl;
     /// 保存未边缘化的Jp Jl r用于回代求解delta_landmark
     l->orig_Jp = l->Jp;
@@ -144,58 +148,30 @@ void myOptimizer::_linearize_one_landmark(myLandmark *l) {
 //        std::cout << "Jp after:\n" << l->Jp << std::endl;
         l->r = l->r.bottomRows(l->r.rows() - LAND_SIZE);
     }
-
-//    int startRow = 0;
-//    int startCol = 0;
-//    for (int i = 0; i < l->edges.size(); i++) {
-//        startCol = l->edges[i]->getPose()->pose_id * POSE_SIZE;
-//        MatXXd blk = l->Jp.middleCols(i * POSE_SIZE, POSE_SIZE);
-//        for (int m = 0; m < blk.rows(); m++)
-//            for (int n = 0; n < blk.cols(); n++)
-//                _tripletList.push_back(T(startRow + m, startCol + n, blk(m, n)));
-//    }
-    // to
 }
 
 /// 将一个landmark对应的所有边的Jp r' (Jl已经被边缘化)放入大的稀疏矩阵J, r
-#define TRIPLET_LIST
-#ifdef TRIPLET_LIST
-//tripletList.reserve(estimation_of_entries);
-//for(...)
-//{
-// ...
-//tripletList.push_back(T(i,j,v_ij));
-//}
-//SparseMatrixType mat(rows,cols);
-//mat.setFromTriplets(tripletList.begin(), tripletList.end());
-// mat is ready to go!
-/*
-void myOptimizer::_toSparseMatrix(int startRow, int startCol,
-                    MatXXd *blk) {
-//    std::vector<T > tripletList;
-    for (int i = 0; i < (*blk).rows(); i++)
-        for (int j = 0; j < (*blk).cols(); j++)
-            _tripletList.push_back(T(startRow + i, startCol + j, (*blk)(i, j)));
-}
-*/
-#endif
-double myOptimizer::_compose1() {
+double myOptimizer::_compose1(Eigen::SparseMatrix<double, Eigen::RowMajor, std::ptrdiff_t > &big_J, VecXd &big_r) {
     int startRow, startCol;
     startRow = startCol = 0;
     double energy = 0.0;
+
+    int num_elements = 0;
+    int num_zero = 0;
     std::cout << "compose start" << std::endl;
 
-//#ifdef TRIPLET_LIST
-//    _tripletList.clear();
-//    _tripletList.reserve(1000 * 20);
-//#endif
+    _tripletList.clear();
+    _tripletList.reserve(1000);
+
+    int k = 0;
     for (auto l : _allLandmarks) {
         assert(l);
         assert(l->edges);
 
+        energy += l->energy;
+
         if (l->Jp.rows() == 0)
             continue;
-        std::vector<T > tripletList;
 
         for (int i = 0; i < l->edges.size(); i++) {
             startCol = l->edges[i]->getPose()->pose_id * POSE_SIZE;
@@ -203,41 +179,100 @@ double myOptimizer::_compose1() {
             {
                 for (int m = 0; m < blk.rows(); m++)
                     for (int n = 0; n < blk.cols(); n++)
-#ifdef TRIPLET_LIST
-                        tripletList.push_back(T(startRow + m, startCol + n, blk(m, n)));
-#else
-                        this->_big_J.insert(startRow + m, startCol + n) = blk(m, n);
-#endif
+                        if (std::abs(blk(m, n)) > 1e-8) {
+                            _tripletList.push_back(T(startRow + m, startCol + n, blk(m, n)));
+                            num_elements++;
+                        } else {
+                            num_zero++;
+                        }
             }
         }
-        this->_big_J.setFromTriplets(tripletList.begin(), tripletList.end());
-//        if (_tripletList.size() % (100) == 0)
-//            std::cout << "triplet size: " << _tripletList.size() << std::endl;
-//        std::cout << "done........" << std::endl;
-//        std::cout << "big_J: row col: " << _big_J.rows() << " " << _big_J.cols() << std::endl;
-        this->_big_r.middleRows(startRow, l->r.rows()) = l->r;
-        energy += l->energy;
+        big_r.middleRows(startRow, l->r.rows()) = l->r;
         startRow += l->Jp.rows() /*- LAND_SIZE*/;
-//#ifdef TRIPLET_LIST
-//        if (_tripletList.size() > 1000 * 10) {
-//            this->_big_J.setFromTriplets(_tripletList.begin(), _tripletList.end());
-//            _tripletList.clear();
-//            _tripletList.reserve(1000 * 20);
-//        }
-//#endif
-    }
-    std::cout << "all done.1......." << energy << std::endl;
 
-    std::cout << "all done.2......." << energy << std::endl;
+//        std::cout << k++ << "\t" << startRow << "\t" << num_elements << "\t" << num_zero << std::endl;
+//        std::cout << _tripletList.max_size() << " " << _tripletList.size() << std::endl;
+    }
+
+    std::cout << "_tripletList done........" << std::endl;
+    std::cout << "num_elements: " << num_elements << " num_zero: " << num_zero << std::endl;
+    big_J.setFromTriplets(_tripletList.begin(), _tripletList.end());
+    std::cout << "setFromTriplets done........" << std::endl;
     return energy;
 }
-void myOptimizer::_compute1(VecXd &dx) {
-    Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrix<double> > lscg;
+
+double myOptimizer::_compose2(BlockSparseMatrix<POSE_SIZE> &big_J, VecXd &big_r) {
+#ifdef BLOCKSPARSE
+    int startRow, startBlockCol;
+    startRow = startBlockCol = 0;
+    double energy = 0.0;
+    std::cout << "compose2 start" << std::endl;
+
+//    _blk.clear();
+//    for (int i = 0; i < 10000; i++)
+//        _blk[i] = MatXXd::Zero(0, 0);
+
+    int startBlockRow = 0;
+    for (int i = 0; i < _allLandmarks.size(); i++) {
+        auto l = _allLandmarks[i];
+        assert(l);
+        assert(l->edges);
+
+        if (l->Jp.rows() == 0) {
+//            std::cout << l->orig_Jp << std::endl;
+            continue;
+        }
+
+        int k = 0;
+        for (int j = 0; j < l->edges.size(); j++) {
+            startBlockCol = l->edges[j]->getPose()->pose_id;
+//            _blk[k] = MatXXd::Zero(l->Jp.rows(), POSE_SIZE);
+            _blk[k] = l->Jp.middleCols(j * POSE_SIZE, POSE_SIZE);
+//            _blk.push_back(temp);
+            {
+//                auto t = _blk.at(_blk.size() - 1);
+//                std::cout << "blk\n" << _blk[k] << std::endl;
+//                big_J.add(startBlockRow, startBlockCol, _blk.at(_blk.size() - 1));
+                big_J.add(startBlockRow, startBlockCol, _blk[k]);
+            }
+            k++;
+        }
+        big_r.middleRows(startRow, l->r.rows()) = l->r;
+
+        energy += l->energy;
+        startRow += l->Jp.rows() /*- LAND_SIZE*/;
+
+        big_J.set_startRow_of_block(startBlockRow, l->Jp.rows());
+        startBlockRow++;
+//        std::cout << "set startRow " << i << " of block " << l->Jp.rows() << std::endl;
+    }
+    std::cout << "compose2 done" << std::endl;
+    return energy;
+#endif
+}
+void myOptimizer::_compute1(VecXd &dx, Eigen::SparseMatrix<double, Eigen::RowMajor, std::ptrdiff_t> &big_J, VecXd &big_r) {
+    Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrix<double>,
+            Eigen::LeastSquareDiagonalPreconditioner<double> > lscg;
+
+
+    std::cout << "lscg start" << std::endl;
+    std::cout << Eigen::nbThreads() << std::endl;
     lscg.setMaxIterations(1000);
     lscg.setTolerance(1e-2);
-    lscg.compute(_big_J);
-    dx = lscg.solve(_big_r);
+    lscg.compute(big_J);
+    dx = lscg.solve(big_r);
 //    std::cout << "lscg  x:\n" << dx.transpose() << std::endl;
     std::cout << "lscg iter: " << lscg.iterations() << std::endl;
     std::cout << "lscg error: " << lscg.error() << std::endl;
+}
+void myOptimizer::_compute2(VecXd &dx, BlockSparseMatrix<POSE_SIZE> &big_J, VecXd &big_r) {
+    std::cout << "compute2 start" << std::endl;
+    MatXXd M_inv = MatXXd::Zero(big_J.block_cols() * POSE_SIZE, big_J.block_cols() * POSE_SIZE);
+    big_J.get_M_inv(M_inv);
+    std::cout << "get_M_inv done" << std::endl;
+//    MatXXd M_inv2 = MatXXd::Identity(big_J.block_cols() * POSE_SIZE, big_J.block_cols() * POSE_SIZE);
+//    big_J.leastsquare_pcg_BlockSparse(M_inv, big_r, dx, 1e-8, 1000);
+//    dx.setZero();
+    big_J.least_square_conjugate_gradient(M_inv, big_r, dx, 1000, 1e-2);
+    std::cout << "compute2 end" << std::endl;
 }

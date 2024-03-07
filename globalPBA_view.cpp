@@ -41,19 +41,21 @@ void Draw(string title, const VecSE3d &cams, const VecVec3d points[], const vect
 
     //! wait for ESC or Tab
     while (pangolin::ShouldQuit() == false) {
-        m.lock();
+//        m.lock();
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         d_cam.Activate(s_cam);
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
+        m.lock();
         global_start = settings_start.Get();
 //        first_cam = settings_cams_first.Get();
 //        last_cam  = settings_cams_last.Get();
         global_pose_R_error = settings_pose_R_error.Get();
         global_pose_t_error = settings_pose_t_error.Get();
         global_landmark_t_error = settings_landmark_error.Get();
+        m.unlock();
 
         // draw poses
         float sz = 0.5;
@@ -108,8 +110,8 @@ void Draw(string title, const VecSE3d &cams, const VecVec3d points[], const vect
         glEnd();
         pangolin::FinishFrame();
 
-        m.unlock();
-        usleep(5000);   // sleep 5 ms
+//        m.unlock();
+        usleep(5000 * 5);   // sleep 5 ms
     }
     pangolin::QuitAll();
 }

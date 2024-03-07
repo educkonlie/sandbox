@@ -24,6 +24,7 @@
 #include <boost/format.hpp>
 
 #include <thread>
+#include <map>
 
 //#define DIRECT_METHOD
 

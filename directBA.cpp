@@ -5,8 +5,9 @@
 //! 内部优化包括g2o优化使用 pose landmark，这是两个vertex
 
 // global variables
-std::string camera_file = "/mnt/data/dso-4-reading/build/bin/result.txt";
-std::string point_file = "/mnt/data/dso-4-reading/build/bin/point_cloud.txt";
+//std::string camera_file = "/mnt/data/dso-4-reading/build/bin/result.txt";
+std::string camera_file = "/mnt/data/dso-4-reading/groundTruthPose/kitti/00.txt";
+std::string point_file  = "/mnt/data/dso-4-reading/groundTruthPose/kitti/00_pc.txt";
 
 // intrinsics
 float fx = 705.919;
@@ -153,16 +154,18 @@ int main(int argc, char **argv)
     std::cout << "7....." << std::endl;
 
     optimizer.initializeOptimization(0);
-    optimizer.optimize(10);
+//    for (int i = 0; i < 5; i++) {
+        optimizer.optimize(10);
 
-    m.lock();
-    for (int i = 0; i < poses.size(); i++)
-        cams[i] = poses[i]->estimate().inverse();
-    for (int host_id : host) {
-        for (int j = 0; j < points[host_id].size(); j++)
-            points[host_id][j] = landmarks[host_id][j]->estimate();
-    }
-    m.unlock();
+        m.lock();
+        for (int i = 0; i < poses.size(); i++)
+            cams[i] = poses[i]->estimate().inverse();
+        for (int host_id: host) {
+            for (int j = 0; j < points[host_id].size(); j++)
+                points[host_id][j] = landmarks[host_id][j]->estimate();
+        }
+        m.unlock();
+//    }
 
     runthread.join();
     printResult(string("/mnt/data/dso-4-reading/gpba_result.txt"), cams);

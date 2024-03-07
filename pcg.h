@@ -10,6 +10,7 @@ using namespace Eigen;
 //using namespace Sophus;
 using namespace std;
 
+#ifdef BLOCK_SPARSE_MAT_test
 void leastsquare_pcg_orig(MatXXd &M_inv, MatXXd &A, VecXd &b, VecXd &x, double tor, int maxiter)
 {
     static int num_of_iter = 0;
@@ -55,33 +56,36 @@ void leastsquare_pcg_orig(MatXXd &M_inv, MatXXd &A, VecXd &b, VecXd &x, double t
     std::cout << "total iters:  " << num_of_iter << std::endl;
     std::cout << "iters per pcg:" << num_of_iter / num_of_pcg << std::endl;
 }
+#endif
 
-void leastsquare_pcg_BlockSparse(MatXXd &M_inv, BlockSparseMatrix<3> &A, VecXd &b, VecXd &x, double tor, int maxiter)
+void leastsquare_pcg_BlockSparse(MatXXd &M_inv, BlockSparseMatrix<POSE_SIZE> &A, VecXd &b, VecXd &x, double tor, int maxiter)
 {
     static int num_of_iter = 0;
     static int num_of_pcg = 0;
     num_of_pcg++;
     int i = 0;
 
-    x = VecXc::Zero(A.block_cols() * 3);
+//    int C = A.getC();
 
-    VecXc Atb = VecXc::Zero(A.block_cols() * 3);
+    x = VecXd::Zero(A.block_cols() * POSE_SIZE);
+
+    VecXd Atb = VecXd::Zero(A.block_cols() * POSE_SIZE);
     A.transpose_right_multiply(b, Atb);
 //    VecXc Atb2 = A_dense.transpose() * b;
 //    std::cout << "Atb:  " << Atb.transpose() << std::endl;
 //    std::cout << "Atb2: " << Atb2.transpose() << std::endl;
-    VecXc r = Atb; // - A.transpose() * (A * x);
-    VecXc d = M_inv * r;
+    VecXd r = Atb; // - A.transpose() * (A * x);
+    VecXd d = M_inv * r;
 
-    scalar delta_new = r.transpose() * d;
-    scalar delta_0 = delta_new;
-    scalar delta_old;
-    scalar alpha;
-    scalar beta;
+    double delta_new = r.transpose() * d;
+    double delta_0 = delta_new;
+    double delta_old;
+    double alpha;
+    double beta;
 
     std::cout << "cg delta_0: " << delta_0 << std::endl;
 
-    VecXc q = VecXc::Zero(A.block_cols() * 3);
+    VecXd q = VecXd::Zero(A.block_cols() * POSE_SIZE);
     while (i < maxiter && delta_new > tor * tor * delta_0) {
 //        VecXc q = A.transpose() * (A * d);
         A.AAq(d, q);
@@ -89,7 +93,7 @@ void leastsquare_pcg_BlockSparse(MatXXd &M_inv, BlockSparseMatrix<3> &A, VecXd &
         x = x + alpha * d;
 
         if (i % 50 == 0) {
-            VecXc temp = VecXc::Zero(A.block_cols() * 3);
+            VecXd temp = VecXd::Zero(A.block_cols() * POSE_SIZE);
             A.AAq(x, temp);
             r = Atb - temp;
         } else {
@@ -97,7 +101,7 @@ void leastsquare_pcg_BlockSparse(MatXXd &M_inv, BlockSparseMatrix<3> &A, VecXd &
         }
 
 //        VecXc s = lambda.asDiagonal() * r;
-        VecXc s = M_inv * r;
+        VecXd s = M_inv * r;
         delta_old = delta_new;
         delta_new = r.transpose() * s;
 
